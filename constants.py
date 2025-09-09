@@ -10,3 +10,8 @@ YELP_PATH = "data/yelp"
 
 SIMULATION_PATH = "data/simulation"
 ML_1M_FILLED_PATH = f"{SIMULATION_PATH}/movielens_1m_sinthetically_filled.csv"
+
+
+USER_COL="user"
+ITEM_COL="item"
+GENRES_COL="genres"
