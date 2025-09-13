@@ -10,7 +10,8 @@ YELP_PATH = "data/yelp"
 
 SIMULATION_PATH = "data/simulation"
 ML_1M_FILLED_PATH = f"{SIMULATION_PATH}/movielens_1m_sinthetically_filled.csv"
-
+ML_1M_1K_SAMPLE_FILLED_PATH = f"{SIMULATION_PATH}/movielens_1m_1k_sample_sinthetically_filled.csv"
+ML_1M_1K_SAMPLE_FILLED_PATH_PKL = f"{SIMULATION_PATH}/movielens_1m_1k_sample_sinthetically_filled.pkl"
 
 USER_COL="user"
 ITEM_COL="item"
