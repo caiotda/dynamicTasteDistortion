@@ -8,10 +8,24 @@ import pandas as pd
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def get_user_preference_for_item(user, item, matrix):
+    # Returns the preference of a user for an item according to an oracle preference matrix
     user_ratings = matrix[matrix["user"] == user]
     return user_ratings[user_ratings["item"] == item].rating.item()
 
 def click_model(k):
+    """
+        Simulates a click model for a ranked list position.
+
+        Args:
+            k (int): The rank position (1-based index) of the item.
+
+        Returns:
+            bool: True if the item is clicked (examined), False otherwise.
+
+        Notes:
+            The probability of examination is determined by a logarithmic decay function,
+            where higher-ranked items (lower k) have a higher chance of being examined.
+    """
     lambda_k = 1/math.log(k+1,2)
     examination_probability = random.random()
     if examination_probability <= lambda_k:
@@ -21,7 +35,23 @@ def click_model(k):
 
 
 def get_user_feedback_for_item(user, item ,k, oraclePreferenceMatrix, ratingDeltaDistribution, initial_time):
-    # Build a mapping from user to their timestamp distribution
+    """
+    Simulates user feedback for a given item at position k in the recommendation list.
+    ins:
+        user - user id
+        item - item id
+        k - position in the recommendation list (1-based index)
+        oraclePreferenceMatrix - dataframe with user-item preferences
+        ratingDeltaDistribution - dictionary mapping user ids to their corresponding
+                                  exponential distribution for time between interactions
+        initial_time - the initial timestamp to calculate the interaction time
+    outs:
+        user - user id
+        item - item id     
+        feedback - user feedback (1 if clicked, 0 if not clicked, None if ignored)
+        clicked_at - position in the recommendation list where the item was clicked (1-based index)
+        timestamp - timestamp of the interaction
+    """
     preference = get_user_preference_for_item(user, item, oraclePreferenceMatrix)
     observed = click_model(k)
     relevant = bool(preference)
@@ -49,6 +79,19 @@ def get_user_feedback_for_item(user, item ,k, oraclePreferenceMatrix, ratingDelt
 
 
 def map_recommendation_to_feedback(user, rec_list, matrix, user_to_up_to_date_timestamp, ratingDeltaDistribution):
+    """
+    Maps a list of recommendations to user feedback signals.
+    ins:
+        user - user id
+        rec_list - list of recommended items
+        matrix - dataframe with user-item preferences
+        user_to_up_to_date_timestamp - dataframe mapping users to their last interaction timestamp
+        ratingDeltaDistribution - dictionary mapping user ids to their corresponding
+                                  exponential distribution for time between interactions
+    outs:
+        results - list of tuples (user, item, feedback, clicked_at, timestamp)
+        final_time - the last recorded timestamp of interaction after processing all recommendations
+    """
     initial_time = user_to_up_to_date_timestamp.loc[user_to_up_to_date_timestamp["user"] == user, "delta_from_start"].squeeze()
     results = []
     final_time = initial_time
