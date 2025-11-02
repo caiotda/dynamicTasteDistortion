@@ -115,6 +115,22 @@ def random_rec(candidates, k):
     return random.sample(candidates, k)
 
 def simulate_user_feedback(user, candidate_items, preference_matrix, k, user_to_up_to_date_timestamp, userToExpDistribution, recommend):
+    """
+        Simulates user feedback for a given user by recommending k items and mapping the recommendations to feedback
+        ins:
+            user - user id
+            candidate_items - list of candidate items
+            preference_matrix - Oracle preference matrix dataframe
+            k - number of items to recommend
+            user_to_up_to_date_timestamp - dataframe mapping users to their last interaction timestamp
+            userToExpDistribution - dictionary mapping user ids to their corresponding
+                                        exponential distribution for time between interactions
+            recommend - A recommendation function that necessarily receives the user, the cutoff k, and a list
+            of candidates.
+        outs:
+            row - list of tuples (user, item, feedback, clicked_at, timestamp)
+            user_to_up_to_date_timestamp - updated dataframe mapping users to their last interaction timestamp
+    """
     rec = recommend(user=torch.tensor(user, device=device), k=k, candidates=candidate_items)
     # Generates a user feedback to each recommendation and the last recorded time of interaction in this recommendation
     row, last_time = map_recommendation_to_feedback(user, rec, preference_matrix, user_to_up_to_date_timestamp, userToExpDistribution)
