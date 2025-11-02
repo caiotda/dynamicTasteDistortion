@@ -19,12 +19,6 @@ def click_model(k):
     return False
 
 
-def get_inverse_propensity_click_score(position):
-    # Given a click position, this funtion returns the invense propensity, 
-    # usefull to debias the data later.
-    return - 1/math.log(position+1,2)
-
-
 
 def get_user_feedback_for_item(user, item ,k, oraclePreferenceMatrix, ratingDeltaDistribution, initial_time):
     # Build a mapping from user to their timestamp distribution
