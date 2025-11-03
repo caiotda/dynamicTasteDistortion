@@ -1,9 +1,11 @@
 import math
 import random
-import tqdm
+import torch
 
+from tqdm import tqdm
 import pandas as pd
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def get_user_preference_for_item(user, item, matrix):
     user_ratings = matrix[matrix["user"] == user]
@@ -66,15 +68,17 @@ def map_recommendation_to_feedback(user, rec_list, matrix, user_to_up_to_date_ti
         results.append(feedback)
     return results, final_time
 
+def get_candidate_items(user, D, unique_items):
+    user_history = set(D[D["user"] == user]["item"])
+    candidate_items = [item for item in unique_items if item not in user_history]
+    return candidate_items
 
-def random_rec(items, u, k, D):
-    user_history = set(D[D["user"] == u]["item"])
-    candidate_items = list(set(items) - user_history)
-    return random.sample(candidate_items, k)
 
+def random_rec(candidates, k):
+    return random.sample(candidates, k)
 
-def simulate_user_feedback(user, candidate_items, click_df, preference_matrix, k, user_to_up_to_date_timestamp, userToExpDistribution):
-    rec = random_rec(candidate_items, user, k, click_df)
+def simulate_user_feedback(user, candidate_items, preference_matrix, k, user_to_up_to_date_timestamp, userToExpDistribution, recommend):
+    rec = recommend(user=torch.tensor(user, device=device), k=k, candidates=candidate_items)
     # Generates a user feedback to each recommendation and the last recorded time of interaction in this recommendation
     row, last_time = map_recommendation_to_feedback(user, rec, preference_matrix, user_to_up_to_date_timestamp, userToExpDistribution)
     user_to_up_to_date_timestamp.loc[user_to_up_to_date_timestamp["user"] == user, "delta_from_start"] = last_time
@@ -110,7 +114,16 @@ def bootstrap_clicks(D, unique_users, unique_items, preference_matrix, userToExp
     for round in range(rounds):
         rows_to_append = []
         for user in tqdm(unique_users, desc=f"Processing users (round {round+1}/{rounds})..."):
-            row, user_to_up_to_date_timestamp = simulate_user_feedback(user, unique_items, D, preference_matrix, k, user_to_up_to_date_timestamp, userToExpDistribution)
+            candidate_items = get_candidate_items(user, D, unique_items)
+            row, user_to_up_to_date_timestamp = simulate_user_feedback(
+                user,
+                candidate_items,
+                preference_matrix,
+                k,
+                user_to_up_to_date_timestamp,
+                userToExpDistribution,
+                recommend=random_rec
+            )
             #row, user_to_up_to_date_timestamp = map_recommendation_to_feedback(user, recs, preference_matrix, user_to_up_to_date_timestamp)
             rows_to_append.extend(row)
         round_df = pd.DataFrame(rows_to_append, columns=new_df.columns)
