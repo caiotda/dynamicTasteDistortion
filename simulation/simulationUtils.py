@@ -78,7 +78,7 @@ def get_user_feedback_for_item(user, item ,k, oraclePreferenceMatrix, ratingDelt
     return user, item, feedback, clicked_at, timestamp
 
 
-def map_recommendation_to_feedback(user, rec_list, matrix, user_to_up_to_date_timestamp, ratingDeltaDistribution):
+def map_recommendation_to_feedback(user, rec_list, matrix, initial_time, ratingDeltaDistribution):
     """
     Maps a list of recommendations to user feedback signals.
     ins:
@@ -92,7 +92,7 @@ def map_recommendation_to_feedback(user, rec_list, matrix, user_to_up_to_date_ti
         results - list of tuples (user, item, feedback, clicked_at, timestamp)
         final_time - the last recorded timestamp of interaction after processing all recommendations
     """
-    initial_time = user_to_up_to_date_timestamp.loc[user_to_up_to_date_timestamp["user"] == user, "delta_from_start"].squeeze()
+    
     results = []
     final_time = initial_time
     for idx, item in enumerate(rec_list):
@@ -136,52 +136,3 @@ def simulate_user_feedback(user, candidate_items, preference_matrix, k, user_to_
     row, last_time = map_recommendation_to_feedback(user, rec, preference_matrix, user_to_up_to_date_timestamp, userToExpDistribution)
     user_to_up_to_date_timestamp.loc[user_to_up_to_date_timestamp["user"] == user, "delta_from_start"] = last_time
     return row, user_to_up_to_date_timestamp
-
-
-def bootstrap_clicks(D, unique_users, unique_items, preference_matrix, userToExpDistribution, k=20, rounds=10, initial_date=None):
-    """
-    Given unique users and unique items, recommend up to k items to every user
-    using a preference matrix as a relevancy model and using a click model
-    to simulate probability of user examinating an item.
-
-    Feedback signal will be fed to the D matrix.
-
-    We run the boostrap process for a total of an arbitrary number of rounds,
-    in order to ensure enough feedback data to train a model.
-    """
-
-
-    if initial_date is None:
-        initial_date = pd.Timestamp.now().timestamp()
-
-    # Setup a dataframe which maps each user to the time delta from its first interaction.
-    user_to_up_to_date_timestamp = pd.DataFrame({
-        "user": unique_users,
-        "delta_from_start": 0.0
-    })
-    
-    # Maps each user to its corresponding exponential distribution, which models the average time between interactions
-    # for each user
-    user_to_up_to_date_timestamp["timestamp_dist"] = user_to_up_to_date_timestamp["user"].map(userToExpDistribution)
-    new_df = D.copy()
-    for round in range(rounds):
-        rows_to_append = []
-        for user in tqdm(unique_users, desc=f"Processing users (round {round+1}/{rounds})..."):
-            candidate_items = get_candidate_items(user, D, unique_items)
-            row, user_to_up_to_date_timestamp = simulate_user_feedback(
-                user,
-                candidate_items,
-                preference_matrix,
-                k,
-                user_to_up_to_date_timestamp,
-                userToExpDistribution,
-                recommend=random_rec
-            )
-            #row, user_to_up_to_date_timestamp = map_recommendation_to_feedback(user, recs, preference_matrix, user_to_up_to_date_timestamp)
-            rows_to_append.extend(row)
-        round_df = pd.DataFrame(rows_to_append, columns=new_df.columns)
-        new_df = pd.concat([new_df, round_df], ignore_index=True)
-    final_df = pd.concat([D, new_df])
-    # Offsets the recorded timestamps by initial_date
-    final_df.loc[final_df["timestamp"].notnull(), "timestamp"] += initial_date
-    return final_df
