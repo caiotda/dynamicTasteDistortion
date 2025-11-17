@@ -9,10 +9,33 @@ from simulationConstants import USER_COL, ITEM_COL
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def get_user_preference_for_item(user, item, matrix):
-    # Returns the preference of a user for an item according to an oracle preference matrix
-    user_ratings = matrix[matrix["user"] == user]
-    return user_ratings[user_ratings["item"] == item].rating.item()
+
+def get_user_preferences(oracle_matrix):
+    user_ids = oracle_matrix[USER_COL].unique()
+    item_ids = oracle_matrix[ITEM_COL].unique()
+    user_id_to_idx = {uid: idx for idx, uid in enumerate(user_ids)}
+    item_id_to_idx = {iid: idx for idx, iid in enumerate(item_ids)}
+
+    # standardize indices
+    user_indices = oracle_matrix[USER_COL].map(user_id_to_idx).values
+    item_indices = oracle_matrix[ITEM_COL].map(item_id_to_idx).values
+    ratings = oracle_matrix["rating"].values
+
+    matrix = torch.zeros((len(user_ids), len(item_ids)), dtype=torch.float32, device=device)
+    # Set the relevancy os each user x item pair
+    matrix[user_indices, item_indices] = torch.from_numpy(ratings).to(torch.float32).to(device)
+    return matrix
+
+def map_prediction_to_preferences(oracle_tensor, prediction, item_id_to_idx):
+    item_id_tensor = prediction
+    item_idx_tensor = torch.tensor([item_id_to_idx[item_id.item()] for item_id in item_id_tensor.flatten()], device=item_id_tensor.device)
+    item_idx_tensor = item_idx_tensor.view_as(item_id_tensor)
+
+    U = oracle_tensor.shape[0]
+    indices = torch.arange(U).unsqueeze(1).to(device)
+
+
+    return oracle_tensor[indices, item_idx_tensor].int()
 
 def click_model(predictions):
     """
