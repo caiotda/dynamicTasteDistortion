@@ -5,6 +5,8 @@ import torch
 from tqdm import tqdm
 import pandas as pd
 
+from simulationConstants import USER_COL, ITEM_COL
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def get_user_preference_for_item(user, item, matrix):
@@ -12,25 +14,28 @@ def get_user_preference_for_item(user, item, matrix):
     user_ratings = matrix[matrix["user"] == user]
     return user_ratings[user_ratings["item"] == item].rating.item()
 
-def click_model(k):
+def click_model(predictions):
     """
-        Simulates a click model for a ranked list position.
+        Simulates a click model tensor of predictions.
 
         Args:
-            k (int): The rank position (1-based index) of the item.
+            predictions (torch.tensor.int): Tensor of predictions made by the model
 
         Returns:
-            bool: True if the item is clicked (examined), False otherwise.
+            torch.tensor.int: Returns the positions that have been examined
 
         Notes:
             The probability of examination is determined by a logarithmic decay function,
-            where higher-ranked items (lower k) have a higher chance of being examined.
+            where higher-ranked items have a higher chance of being examined.
     """
-    lambda_k = 1/math.log(k+1,2)
-    examination_probability = random.random()
-    if examination_probability <= lambda_k:
-        return True
-    return False
+    M, K = predictions.shape
+    # Creates a tensor of item positions in the recommendation from 0 to k, 
+    # for M users.
+    tensor = torch.stack([torch.arange(K, device=device)] * M)
+    # A random examination probability that each user has for each item position.
+    examination_probability = torch.rand(M, K, device=device)
+    lambda_tensor = 1/torch.log2(tensor+1)
+    return (lambda_tensor > examination_probability).int()
 
 
 
