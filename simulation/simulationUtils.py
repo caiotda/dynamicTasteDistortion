@@ -4,8 +4,10 @@ import torch
 
 from tqdm import tqdm
 import pandas as pd
+import numpy as np
 
 from simulationConstants import USER_COL, ITEM_COL
+from tensorUtils import get_matrix_coordinates
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -26,10 +28,8 @@ def get_user_preferences(oracle_matrix):
     matrix[user_indices, item_indices] = torch.from_numpy(ratings).to(torch.float32).to(device)
     return matrix
 
-def map_prediction_to_preferences(oracle_tensor, prediction, item_id_to_idx):
-    item_id_tensor = prediction
-    item_idx_tensor = torch.tensor([item_id_to_idx[item_id.item()] for item_id in item_id_tensor.flatten()], device=item_id_tensor.device)
-    item_idx_tensor = item_idx_tensor.view_as(item_id_tensor)
+def map_prediction_to_preferences(oracle_tensor, prediction):
+    item_idx_tensor = prediction
 
     U = oracle_tensor.shape[0]
     indices = torch.arange(U).unsqueeze(1).to(device)
@@ -61,106 +61,91 @@ def click_model(predictions):
     return (lambda_tensor > examination_probability).int()
 
 
+def get_feedback_for_predictions(oracle_matrix, predictions):
+    item_ids = oracle_matrix[ITEM_COL].unique()
+    item_id_to_idx = {iid: idx for idx, iid in enumerate(item_ids)}
+    oracle_tensor = get_user_preferences(oracle_matrix)
+    preferences_matrix = map_prediction_to_preferences(oracle_tensor, predictions, item_id_to_idx)
+    examined_matrix = click_model(predictions)
 
-def get_user_feedback_for_item(user, item ,k, oraclePreferenceMatrix, ratingDeltaDistribution, initial_time):
-    """
-    Simulates user feedback for a given item at position k in the recommendation list.
-    ins:
-        user - user id
-        item - item id
-        k - position in the recommendation list (1-based index)
-        oraclePreferenceMatrix - dataframe with user-item preferences
-        ratingDeltaDistribution - dictionary mapping user ids to their corresponding
-                                  exponential distribution for time between interactions
-        initial_time - the initial timestamp to calculate the interaction time
-    outs:
-        user - user id
-        item - item id     
-        feedback - user feedback (1 if clicked, 0 if not clicked, None if ignored)
-        clicked_at - position in the recommendation list where the item was clicked (1-based index)
-        timestamp - timestamp of the interaction
-    """
-    preference = get_user_preference_for_item(user, item, oraclePreferenceMatrix)
-    observed = click_model(k)
-    relevant = bool(preference)
-    should_click = observed and relevant
-    if (should_click):
-        feedback = 1
-        clicked_at = k
-        # Sample one delta_t random variable following the users
-        # Exponential time distribution
-        timestamp = (ratingDeltaDistribution[user].rvs(1)[0] / 60) + initial_time
-    else:
-        if (observed):
-            # Case where an item was observed, but isn´t relevant -> negative example for BPR
-            feedback = 0
-        else:
-            # Case where an item was neither observed or relevant -> we will ignore this training instance in this loop
-            feedback = None
-        clicked_at = None
-        timestamp = None
-        
-    # If user clicked the item, record the position it was in
-    # feedback = 1 if user examined and clicked, 0 if user examined and not clicked,
-    # None if otherwise
-    return user, item, feedback, clicked_at, timestamp
+    should_click = 2*(preferences_matrix & examined_matrix) - 1
+
+    interaction = should_click * predictions
+    feedback_matrix = interaction * examined_matrix
+
+    mapped_feedback = torch.where(
+        feedback_matrix == 0,
+        torch.tensor(float('nan'), device=feedback_matrix.device),
+        torch.where(
+            feedback_matrix < 0,
+            torch.tensor(0, device=feedback_matrix.device),
+            torch.tensor(1, device=feedback_matrix.device)
+        )
+    )
 
 
-def map_recommendation_to_feedback(user, rec_list, matrix, initial_time, ratingDeltaDistribution):
-    """
-    Maps a list of recommendations to user feedback signals.
-    ins:
-        user - user id
-        rec_list - list of recommended items
-        matrix - dataframe with user-item preferences
-        user_to_up_to_date_timestamp - dataframe mapping users to their last interaction timestamp
-        ratingDeltaDistribution - dictionary mapping user ids to their corresponding
-                                  exponential distribution for time between interactions
-    outs:
-        results - list of tuples (user, item, feedback, clicked_at, timestamp)
-        final_time - the last recorded timestamp of interaction after processing all recommendations
-    """
+    return mapped_feedback
     
-    results = []
-    final_time = initial_time
-    for idx, item in enumerate(rec_list):
-        user, item, feedback, clicked_at, timestamp  = get_user_feedback_for_item(user, item, idx+1, matrix, ratingDeltaDistribution, initial_time)
-        if (timestamp is not None):
-            initial_time = timestamp
-            if(timestamp > final_time):
-                final_time = timestamp
-        feedback = (user, item, feedback, clicked_at, timestamp)
-        results.append(feedback)
-    return results, final_time
 
-def get_candidate_items(user, D, unique_items):
-    user_history = set(D[D["user"] == user]["item"])
-    candidate_items = [item for item in unique_items if item not in user_history]
-    return candidate_items
+def get_candidate_items(D):
+
+    user_item_pairs = D[[USER_COL, ITEM_COL]].drop_duplicates()
+    user_item_matrix = user_item_pairs.assign(interaction=-1).pivot(index=USER_COL, columns=ITEM_COL, values='interaction').fillna(1).astype(int)
+
+    mask_from_df = torch.tensor(user_item_matrix.values, dtype=torch.int8, device=device)
+    return mask_from_df
 
 
 def random_rec(candidates, k):
     return random.sample(candidates, k)
 
-def simulate_user_feedback(user, candidate_items, preference_matrix, k, user_to_up_to_date_timestamp, userToExpDistribution, recommend):
+def simulate_user_feedback(users, candidate_items, mask, oracle_matrix, k, rating_delta_distribution, model, initial_time=0.0, feedback_from_bootstrap=False):
     """
-        Simulates user feedback for a given user by recommending k items and mapping the recommendations to feedback
-        ins:
-            user - user id
-            candidate_items - list of candidate items
-            preference_matrix - Oracle preference matrix dataframe
-            k - number of items to recommend
-            user_to_up_to_date_timestamp - dataframe mapping users to their last interaction timestamp
-            userToExpDistribution - dictionary mapping user ids to their corresponding
-                                        exponential distribution for time between interactions
-            recommend - A recommendation function that necessarily receives the user, the cutoff k, and a list
-            of candidates.
-        outs:
-            row - list of tuples (user, item, feedback, clicked_at, timestamp)
-            user_to_up_to_date_timestamp - updated dataframe mapping users to their last interaction timestamp
+        Simulates user feedback for a batch of users by recommending k items and mapping the recommendations to feedback.
+
+        Args:
+            users (torch.Tensor): Tensor of user indices.
+            candidate_items (torch.Tensor): Tensor of candidate items for recommendation.
+            mask (torch.Tensor): 2D tensor indicating items to ignore during recommendation (i.e: previously interacted items).
+            oracle_matrix (pd.DataFrame): Oracle preference matrix dataframe.
+            k (int): Number of items to recommend per user.
+            rating_delta_distribution (dict): Dictionary mapping user indices to their corresponding
+                                              exponential distribution for time between interactions.
+            model (object): Recommendation model with a `predict` method that takes users, k, candidates, and mask.
+            initial_time (float, optional): Initial timestamp for the simulation. Defaults to 0.0.
+            feedback_from_bootstrap (bool, optional): If True, generates random recommendations instead of using the model. Defaults to False.
+
+        Returns:
+            pd.DataFrame: A dataframe containing the simulated interactions with the following schema:
+                - users: User indices.
+                - items: Recommended item indices.
+                - feedback: Feedback values (1 for positive, 0 for negative, NaN for no interaction).
+                - clicked_at: Click positions in the recommendation list (NaN if no click occurred).
+                - timestamp: Interaction timestamps (NaN if no interaction occurred).
     """
-    rec = recommend(user=torch.tensor(user, device=device), k=k, candidates=candidate_items)
-    # Generates a user feedback to each recommendation and the last recorded time of interaction in this recommendation
-    row, last_time = map_recommendation_to_feedback(user, rec, preference_matrix, user_to_up_to_date_timestamp, userToExpDistribution)
-    user_to_up_to_date_timestamp.loc[user_to_up_to_date_timestamp["user"] == user, "delta_from_start"] = last_time
-    return row, user_to_up_to_date_timestamp
+    if (feedback_from_bootstrap):
+        rec = random_rec(candidate_items, k)
+    else:   
+        rec = model.predict(user=users, k=k, candidates=candidate_items, mask=mask)[0]
+
+    feedback_matrix = get_feedback_for_predictions(oracle_matrix, rec)
+
+
+    indices =  get_matrix_coordinates(feedback_matrix)
+
+
+    users, click_positions = indices.T.tolist()
+
+    feedbacks = feedback_matrix.flatten().tolist()
+    items = rec.flatten().tolist()
+
+
+    timestamps = [(rating_delta_distribution[user].rvs(1)[0] / 60) + initial_time for user in users]
+    entries = list(zip(users, items, feedbacks, click_positions, timestamps))
+    interaction_df = pd.DataFrame(entries, columns=["users", "items", "feedback", "clicked_at", "timestamp"])
+
+
+    interaction_df.loc[interaction_df["feedback"] != 1.0, "clicked_at"] = np.nan
+    interaction_df.loc[interaction_df["feedback"] != 1.0, "timestamp"] = np.nan
+
+    return interaction_df
