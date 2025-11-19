@@ -96,8 +96,13 @@ def get_candidate_items(D):
     return mask_from_df
 
 
-def random_rec(candidates, k):
-    return random.sample(candidates, k)
+def random_rec(candidates, n_users, k):
+    return torch.randint(
+        size=(n_users, k),
+        low=0,
+        high=len(candidates),
+        device=device
+    )
 
 def simulate_user_feedback(users, candidate_items, mask, oracle_matrix, k, rating_delta_distribution, model, initial_time=0.0, feedback_from_bootstrap=False):
     """
@@ -124,7 +129,8 @@ def simulate_user_feedback(users, candidate_items, mask, oracle_matrix, k, ratin
                 - timestamp: Interaction timestamps (NaN if no interaction occurred).
     """
     if (feedback_from_bootstrap):
-        rec = random_rec(candidate_items, k)
+        n_users = len(users)
+        rec = random_rec(candidate_items, n_users, k)
     else:   
         rec = model.predict(user=users, k=k, candidates=candidate_items, mask=mask)[0]
 
