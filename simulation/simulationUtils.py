@@ -10,6 +10,8 @@ from simulationConstants import USER_COL, ITEM_COL
 from tensorUtils import get_matrix_coordinates
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+seed=42
+torch.manual_seed(seed)
 
 
 def get_user_preferences(oracle_matrix):
@@ -54,7 +56,7 @@ def click_model(predictions):
     M, K = predictions.shape
     # Creates a tensor of item positions in the recommendation from 0 to k, 
     # for M users.
-    tensor = torch.stack([torch.arange(K, device=device)] * M)
+    tensor = torch.stack([torch.arange(K, device=device)] * M).to(device)
     # A random examination probability that each user has for each item position.
     examination_probability = torch.rand(M, K, device=device)
     lambda_tensor = 1/torch.log2(tensor+1)
@@ -62,10 +64,8 @@ def click_model(predictions):
 
 
 def get_feedback_for_predictions(oracle_matrix, predictions):
-    item_ids = oracle_matrix[ITEM_COL].unique()
-    item_id_to_idx = {iid: idx for idx, iid in enumerate(item_ids)}
     oracle_tensor = get_user_preferences(oracle_matrix)
-    preferences_matrix = map_prediction_to_preferences(oracle_tensor, predictions, item_id_to_idx)
+    preferences_matrix = map_prediction_to_preferences(oracle_tensor, predictions)
     examined_matrix = click_model(predictions)
 
     should_click = 2*(preferences_matrix & examined_matrix) - 1
@@ -134,14 +134,14 @@ def simulate_user_feedback(users, candidate_items, mask, oracle_matrix, k, ratin
     indices =  get_matrix_coordinates(feedback_matrix)
 
 
-    users, click_positions = indices.T.tolist()
+    users_indices, click_positions = indices.T.tolist()
 
     feedbacks = feedback_matrix.flatten().tolist()
     items = rec.flatten().tolist()
 
 
-    timestamps = [(rating_delta_distribution[user].rvs(1)[0] / 60) + initial_time for user in users]
-    entries = list(zip(users, items, feedbacks, click_positions, timestamps))
+    timestamps = [(rating_delta_distribution[user].rvs(1)[0] / 60) + initial_time for user in users.tolist()]
+    entries = list(zip(users_indices, items, feedbacks, click_positions, timestamps))
     interaction_df = pd.DataFrame(entries, columns=["users", "items", "feedback", "clicked_at", "timestamp"])
 
 
