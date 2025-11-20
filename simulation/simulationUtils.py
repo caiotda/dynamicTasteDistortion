@@ -6,8 +6,8 @@ from tqdm import tqdm
 import pandas as pd
 import numpy as np
 
-from simulationConstants import USER_COL, ITEM_COL
-from tensorUtils import get_matrix_coordinates
+from tasteDistortionOnDynamicRecs.simulationConstants import USER_COL, ITEM_COL
+from tasteDistortionOnDynamicRecs.simulation.tensorUtils import get_matrix_coordinates
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 seed=42
@@ -104,7 +104,7 @@ def random_rec(candidates, n_users, k):
         device=device
     )
 
-def simulate_user_feedback(users, candidate_items, mask, oracle_matrix, k, rating_delta_distribution, model, initial_time=0.0, feedback_from_bootstrap=False):
+def simulate_user_feedback(users, candidate_items, mask, oracle_matrix, k, rating_delta_distribution, model,user_idx_to_id_map, initial_time=0.0, feedback_from_bootstrap=False):
     """
         Simulates user feedback for a batch of users by recommending k items and mapping the recommendations to feedback.
 
@@ -139,16 +139,15 @@ def simulate_user_feedback(users, candidate_items, mask, oracle_matrix, k, ratin
 
     indices =  get_matrix_coordinates(feedback_matrix)
 
-
-    users_indices, click_positions = indices.T.tolist()
+    users_indices, click_positions = indices[:, 0].tolist(), indices[:, 1].tolist()
+    user_ids = [user_idx_to_id_map[idx] for idx in users_indices]
 
     feedbacks = feedback_matrix.flatten().tolist()
     items = rec.flatten().tolist()
 
-
-    timestamps = [(rating_delta_distribution[user].rvs(1)[0] / 60) + initial_time for user in users.tolist()]
+    timestamps = [(rating_delta_distribution[user].rvs(1)[0] / 60) + initial_time for user in user_ids]
     entries = list(zip(users_indices, items, feedbacks, click_positions, timestamps))
-    interaction_df = pd.DataFrame(entries, columns=["users", "items", "feedback", "clicked_at", "timestamp"])
+    interaction_df = pd.DataFrame(entries, columns=["user", "item", "feedback", "clicked_at", "timestamp"])
 
 
     interaction_df.loc[interaction_df["feedback"] != 1.0, "clicked_at"] = np.nan
