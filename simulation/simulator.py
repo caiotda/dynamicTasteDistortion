@@ -8,47 +8,50 @@ from scipy.stats import expon
 
 import pandas as pd
 
-
-from metrics import mace
-from simulationUtils import get_candidate_items, simulate_user_feedback
-from simulationConstants import USER_COL, ITEM_COL, GENRES_COL
+import sys
+import os
+from calibratedRecs.metrics import mace
+from tasteDistortionOnDynamicRecs.simulation.simulationUtils import get_candidate_items, simulate_user_feedback
+from tasteDistortionOnDynamicRecs.simulationConstants import USER_COL, ITEM_COL, GENRES_COL
 
 class Simulator:
-    def __init__(self, oracle_matrix, model, num_rounds, initial_date):
-        self.oracle_matrix = oracle_matrix
+    def __init__(self, oracle_matrix, model, num_rounds, initial_date, user_sample=None):
+        self.timestamp_distribution = self.setup_user_timestamp_distribution()
+        self.user_idx_to_id = {idx: user_id for idx, user_id in enumerate(self.timestamp_distribution.keys())}
+
+        if user_sample is None:
+            users = list(self.user_idx_to_id.values())
+        else:
+            users = user_sample
+        self.oracle_matrix = oracle_matrix[oracle_matrix[USER_COL].isin(users)]
         self.model = model
         self.rounds = num_rounds
         self.initial_date = initial_date
-
-        self.users = list(oracle_matrix[USER_COL].drop_duplicates())
-        self.items = list(oracle_matrix[ITEM_COL].drop_duplicates())
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         if self.initial_date is None:
             self.initial_date = pd.Timestamp.now().timestamp()
 
-        self.timestamp_distribution = self.setup_user_timestamp_distribution()
-        self.click_matrix = pd.DataFrame(columns=[USER_COL, ITEM_COL, "clicked_and_examined", "clicked_at", "timestamp"])
-        self.bootstrapped_clicks = self.bootstrap_clicks()
+
+
+        self.users = torch.tensor(users , device=self.device)
+
+        self.items = torch.tensor(list(oracle_matrix[ITEM_COL].drop_duplicates()), device=self.device)
+
+        self.click_matrix = self.bootstrap_clicks()
 
     def setup_user_timestamp_distribution(self):
-        # E se não for movielens?
-        # TODO: precisa ser configuravel qual o dataset?
+
         user_to_time_delta = pd.read_csv("../data/movielens-1m/median_time_diff_per_user.csv").set_index("userId")
-        userToExpDistribution = {
+
+        user_to_exp_distribution = {
             user: expon(scale=row["median_timestamp_diff"])
             for user, row in user_to_time_delta.iterrows()
         }
 
-        user_to_up_to_date_timestamp = pd.DataFrame({
-            "user": self.users, 
-            "delta_from_start": self.initial_date
-        })
-        user_to_up_to_date_timestamp["timestamp_dist"] = user_to_up_to_date_timestamp["user"].map(userToExpDistribution)
-
-
-        return user_to_up_to_date_timestamp
+        
+        return user_to_exp_distribution
 
 
     def simulate_round_of_recommendation(self, recommendation_function):
@@ -72,7 +75,7 @@ class Simulator:
         round_df = pd.DataFrame(rows_to_append, columns=self.click_df.columns)
         return round_df
 
-    def bootstrap_clicks(self, recommend, bootstrapping_rounds=5, k=20):
+    def bootstrap_clicks(self, k=20):
         """
         Given unique users and unique items, recommend up to k items to every user
         using a preference matrix as a relevancy model and using a click model
@@ -85,19 +88,25 @@ class Simulator:
         
         """
         
-        # Maps each user to its corresponding exponential distribution, which models the average time between interactions
-        # for each user
-        for _ in range(bootstrapping_rounds):
-            round_df = self.simulate_round_of_recommendation(recommend)
-            click_df = pd.concat([click_df, round_df], ignore_index=True)
-        # Offsets the recorded timestamps by initial_date
-        click_df.loc[click_df["timestamp"].notnull(), "timestamp"] += self.initial_date
-        # No simulate ele retorna o log de maces
-        return click_df
+        boostrapped_df = pd.DataFrame([], columns=["user", "item", "feedback", "clicked_at", "timestamp"])
+        for _ in range(self.rounds):
+            round_df = simulate_user_feedback(
+                users=self.users,
+                candidate_items=self.items,
+                mask=None,
+                oracle_matrix=self.oracle_matrix,
+                rating_delta_distribution=self.timestamp_distribution,
+                model=None,
+                feedback_from_bootstrap=True,
+                user_idx_to_id_map=self.user_idx_to_id,
+                k=k
+            )
+            boostrapped_df = pd.concat([boostrapped_df, round_df], ignore_index=True)
+
+        return boostrapped_df   
 
 
 
-    # TODO User sample?
     def simulate(
         self,
         click_matrix,
