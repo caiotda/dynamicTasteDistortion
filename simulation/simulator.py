@@ -1,22 +1,18 @@
-import math
-import random
 import torch
-import pickle
 
 from tqdm import tqdm
-from scipy.stats import expon
 
 import pandas as pd
 
-import sys
-import os
 from calibratedRecs.metrics import mace
-from tasteDistortionOnDynamicRecs.simulation.simulationUtils import get_candidate_items, simulate_user_feedback
+from tasteDistortionOnDynamicRecs.simulation.simulationUtils import get_candidate_items, simulate_user_feedback, setup_user_timestamp_distribution, random_rec, get_feedback_for_predictions
 from tasteDistortionOnDynamicRecs.simulationConstants import USER_COL, ITEM_COL, GENRES_COL
+from tasteDistortionOnDynamicRecs.simulation.tensorUtils import get_matrix_coordinates
+
 
 class Simulator:
     def __init__(self, oracle_matrix, model, num_rounds, initial_date, user_sample=None):
-        self.timestamp_distribution = self.setup_user_timestamp_distribution()
+        self.timestamp_distribution = setup_user_timestamp_distribution()
         self.user_idx_to_id = {idx: user_id for idx, user_id in enumerate(self.timestamp_distribution.keys())}
 
         if user_sample is None:
@@ -41,17 +37,56 @@ class Simulator:
 
         self.click_matrix = self.bootstrap_clicks()
 
-    def setup_user_timestamp_distribution(self):
+    def simulate_user_feedback(self, mask, k, feedback_from_bootstrap=False):
+        """
+            Simulates user feedback for a batch of users by recommending k items and mapping the recommendations to feedback.
 
-        user_to_time_delta = pd.read_csv("../data/movielens-1m/median_time_diff_per_user.csv").set_index("userId")
+            Args:
+                users (torch.Tensor): Tensor of user indices.
+                candidate_items (torch.Tensor): Tensor of candidate items for recommendation.
+                mask (torch.Tensor): 2D tensor indicating items to ignore during recommendation (i.e: previously interacted items).
+                oracle_matrix (pd.DataFrame): Oracle preference matrix dataframe.
+                k (int): Number of items to recommend per user.
+                rating_delta_distribution (dict): Dictionary mapping user indices to their corresponding
+                                                exponential distribution for time between interactions.
+                model (object): Recommendation model with a `predict` method that takes users, k, candidates, and mask.
+                initial_time (float, optional): Initial timestamp for the simulation. Defaults to 0.0.
+                feedback_from_bootstrap (bool, optional): If True, generates random recommendations instead of using the model. Defaults to False.
 
-        user_to_exp_distribution = {
-            user: expon(scale=row["median_timestamp_diff"])
-            for user, row in user_to_time_delta.iterrows()
-        }
+            Returns:
+                pd.DataFrame: A dataframe containing the simulated interactions with the following schema:
+                    - users: User indices.
+                    - items: Recommended item indices.
+                    - feedback: Feedback values (1 for positive, 0 for negative, NaN for no interaction).
+                    - clicked_at: Click positions in the recommendation list (NaN if no click occurred).
+                    - timestamp: Interaction timestamps (NaN if no interaction occurred).
+        """
+        if (feedback_from_bootstrap):
+            n_users = len(self.users)
+            rec = random_rec(self.items, n_users, k)
+        else:   
+            rec = self.model.predict(user=self.users, k=k, candidates=self.items, mask=mask)[0]
 
-        
-        return user_to_exp_distribution
+        feedback_matrix = get_feedback_for_predictions(self.oracle_matrix, rec)
+
+
+        indices =  get_matrix_coordinates(feedback_matrix)
+
+        users_indices, click_positions = indices[:, 0].tolist(), indices[:, 1].tolist()
+        user_ids = [self.user_idx_to_id[idx] for idx in users_indices]
+
+        feedbacks = feedback_matrix.flatten().tolist()
+        items = rec.flatten().tolist()
+
+        timestamps = [(self.timestamp_distribution[user].rvs(1)[0] / 60) + self.initial_date for user in user_ids]
+        entries = list(zip(users_indices, items, feedbacks, click_positions, timestamps))
+        interaction_df = pd.DataFrame(entries, columns=["user", "item", "feedback", "clicked_at", "timestamp"])
+
+
+        interaction_df.loc[interaction_df["feedback"] != 1.0, "clicked_at"] = np.nan
+        interaction_df.loc[interaction_df["feedback"] != 1.0, "timestamp"] = np.nan
+
+        return interaction_df
 
 
     def simulate_round_of_recommendation(self, recommendation_function):
@@ -91,14 +126,9 @@ class Simulator:
         boostrapped_df = pd.DataFrame([], columns=["user", "item", "feedback", "clicked_at", "timestamp"])
         for _ in range(self.rounds):
             round_df = simulate_user_feedback(
-                users=self.users,
-                candidate_items=self.items,
                 mask=None,
-                oracle_matrix=self.oracle_matrix,
-                rating_delta_distribution=self.timestamp_distribution,
                 model=None,
                 feedback_from_bootstrap=True,
-                user_idx_to_id_map=self.user_idx_to_id,
                 k=k
             )
             boostrapped_df = pd.concat([boostrapped_df, round_df], ignore_index=True)
