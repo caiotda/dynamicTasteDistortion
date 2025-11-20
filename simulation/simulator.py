@@ -10,6 +10,8 @@ from tasteDistortionOnDynamicRecs.simulationConstants import USER_COL, ITEM_COL,
 from tasteDistortionOnDynamicRecs.simulation.tensorUtils import get_matrix_coordinates
 
 
+from bprMF.utils import train
+
 class Simulator:
     def __init__(self, oracle_matrix, model, num_rounds, initial_date, user_sample=None):
         self.timestamp_distribution = setup_user_timestamp_distribution()
@@ -88,28 +90,6 @@ class Simulator:
 
         return interaction_df
 
-
-    def simulate_round_of_recommendation(self, recommendation_function):
-        rows_to_append = []
-        for user in self.users:
-            user_to_up_to_date_timestamp = self.timestamp_distribution.copy()
-            initial_time = user_to_up_to_date_timestamp.loc[user_to_up_to_date_timestamp["user"] == user, "delta_from_start"].squeeze()
-            candidate_items = get_candidate_items(user, self.click_matrix, self.items)
-            user_to_up_to_date_timestamp = self.user_to_up_to_date_timestamp
-            row, user_to_up_to_date_timestamp = simulate_user_feedback(
-                user,
-                candidate_items,
-                self.oracle_matrix,
-                self.k,
-                initial_time,
-                user_to_up_to_date_timestamp,
-                recommend=recommendation_function
-            )
-            rows_to_append.extend(row)
-        self.timestamp_distribution = user_to_up_to_date_timestamp
-        round_df = pd.DataFrame(rows_to_append, columns=self.click_df.columns)
-        return round_df
-
     def bootstrap_clicks(self, k=20):
         """
         Given unique users and unique items, recommend up to k items to every user
@@ -139,10 +119,8 @@ class Simulator:
 
     def simulate(
         self,
-        click_matrix,
-        rounds,
-        recommend,
-        L=10, 
+        k=100,
+        L=10,
     ):
         """
         Simulates a dynamic recommendation setting.
@@ -180,28 +158,32 @@ class Simulator:
             List of MACE metric values computed every L rounds.
         """
 
+
         item2genreMap = (
             self.oracle_matrix[[ITEM_COL, GENRES_COL]]
             .set_index(ITEM_COL)[GENRES_COL]
             .to_dict()
         )
-        user2history = click_matrix.groupby(USER_COL).agg({ITEM_COL: list}).to_dict()[ITEM_COL]
-
-        new_df = click_matrix.copy()
+        user2history = self.click_matrix.groupby(USER_COL).agg({ITEM_COL: list}).to_dict()[ITEM_COL]
+        
+        boostrapped_df = pd.DataFrame([], columns=["user", "item", "feedback", "clicked_at", "timestamp"])
         maces = []
-        for round in tqdm(range(1, rounds + 1), desc="Rounds"):
-            recommendation_df = self.simulate_round_of_recommendation(recommend)
+        for _ in range(self.rounds):
+            round_df = simulate_user_feedback(
+                mask=None,
+                model=None,
+                feedback_from_bootstrap=True,
+                k=k
+            )
             if (round % L == 0):
                 print("retraining model...")
-                # TODO que porra é essa mano
-                model = train(model, new_df)
+                model = train(model, boostrapped_df)
                 print("Calculating mace")
-                rec_df_grouped = recommendation_df.groupby(USER_COL).agg({ITEM_COL: list}).reset_index().rename(columns={ITEM_COL: "rec"})
+                rec_df_grouped = boostrapped_df.groupby(USER_COL).agg({ITEM_COL: list}).reset_index().rename(columns={ITEM_COL: "rec"})
                 iteration_mace = mace(df=rec_df_grouped, user2history=user2history, recCol='rec', item2genreMap=item2genreMap)
                 maces.append(iteration_mace)
             if (round % 100 == 0):
-                recommendation_df.to_csv(f"data/movielens/no_calibration_sim_up_to_round_{round}")
-            new_df = pd.concat([new_df, recommendation_df], ignore_index=True)
-        final_df = pd.concat([click_matrix, new_df])
-        final_df.loc[final_df["timestamp"].notnull(), "timestamp"] += self.initial_date
-        return final_df, maces
+                boostrapped_df.to_csv(f"data/movielens/no_calibration_sim_up_to_round_{round}")
+            boostrapped_df = pd.concat([boostrapped_df, round_df], ignore_index=True)
+
+        return boostrapped_df, maces   
