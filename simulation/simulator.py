@@ -40,27 +40,20 @@ class Simulator:
 
     def simulate_user_feedback(self, mask, k, feedback_from_bootstrap=False):
         """
-            Simulates user feedback for a batch of users by recommending k items and mapping the recommendations to feedback.
+        Simulates user feedback for a batch of users by recommending k items and mapping the recommendations to feedback.
 
-            Args:
-                users (torch.Tensor): Tensor of user indices.
-                candidate_items (torch.Tensor): Tensor of candidate items for recommendation.
-                mask (torch.Tensor): 2D tensor indicating items to ignore during recommendation (i.e: previously interacted items).
-                oracle_matrix (pd.DataFrame): Oracle preference matrix dataframe.
-                k (int): Number of items to recommend per user.
-                rating_delta_distribution (dict): Dictionary mapping user indices to their corresponding
-                                                exponential distribution for time between interactions.
-                model (object): Recommendation model with a `predict` method that takes users, k, candidates, and mask.
-                initial_time (float, optional): Initial timestamp for the simulation. Defaults to 0.0.
-                feedback_from_bootstrap (bool, optional): If True, generates random recommendations instead of using the model. Defaults to False.
+        Args:
+            mask (torch.Tensor): 2D tensor indicating items to ignore during recommendation (e.g., previously interacted items).
+            k (int): Number of items to recommend per user.
+            feedback_from_bootstrap (bool, optional): If True, generates random recommendations instead of using the model. Defaults to False.
 
-            Returns:
-                pd.DataFrame: A dataframe containing the simulated interactions with the following schema:
-                    - users: User indices.
-                    - items: Recommended item indices.
-                    - feedback: Feedback values (1 for positive, 0 for negative, NaN for no interaction).
-                    - clicked_at: Click positions in the recommendation list (NaN if no click occurred).
-                    - timestamp: Interaction timestamps (NaN if no interaction occurred).
+        Returns:
+            pd.DataFrame: A dataframe containing the simulated interactions with the following schema:
+                - user: User indices.
+                - item: Recommended item indices.
+                - click: Feedback values (1 for positive, 0 for negative, NaN for no interaction).
+                - clicked_at: Click positions in the recommendation list (NaN if no click occurred).
+                - timestamp: Interaction timestamps (NaN if no interaction occurred).
         """
         if (feedback_from_bootstrap):
             n_users = len(self.users)
@@ -126,35 +119,19 @@ class Simulator:
 
         Parameters
         ----------
-        D : pd.DataFrame
-            Initial feedback data containing user-item interactions.
-        model : torch.nn.Module
-            Recommendation model with a predict_flat method.
-        unique_users : list
-            List of unique user IDs to simulate.
-        unique_items : list
-            List of unique item IDs to recommend.
-        oracleMatrix : pd.DataFrame
-            Matrix containing oracle user preferences for items.
-        userToExpDistribution : dict
-            Mapping from user ID to their timestamp distribution.
-        item2genreMap : dict
-            Mapping from item ID to its genres.
         k : int, optional
             Number of items to recommend per user per round (default=100).
-        rounds : int, optional
-            Number of simulation rounds (default=1000).
         L : int, optional
-            Retrain model every L rounds (default=10).
-        initial_date : float, optional
-            Initial timestamp for simulation (default=None).
+            Retrain the model every L rounds (default=10).
+        rounds : int, optional
+            Total number of simulation rounds (default=10,000).
 
         Returns
         -------
         final_df : pd.DataFrame
-            DataFrame containing all simulated feedback.
+            DataFrame containing all simulated feedback, including user-item interactions, clicks, and timestamps.
         maces : list
-            List of MACE metric values computed every L rounds.
+            List of MACE metric values computed every L rounds to evaluate recommendation quality.
         """
 
 
