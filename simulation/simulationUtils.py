@@ -1,134 +1,114 @@
-import math
-import random
 import torch
+from scipy.stats import expon
 
-from tqdm import tqdm
 import pandas as pd
 
+from tasteDistortionOnDynamicRecs.simulationConstants import USER_COL, ITEM_COL
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-def get_user_preference_for_item(user, item, matrix):
-    user_ratings = matrix[matrix["user"] == user]
-    return user_ratings[user_ratings["item"] == item].rating.item()
-
-def click_model(k):
-    lambda_k = 1/math.log(k+1,2)
-    examination_probability = random.random()
-    if examination_probability <= lambda_k:
-        return True
-    return False
+seed=42
+torch.manual_seed(seed)
 
 
-def get_inverse_propensity_click_score(position):
-    # Given a click position, this funtion returns the invense propensity, 
-    # usefull to debias the data later.
-    return - 1/math.log(position+1,2)
+def get_user_preferences(oracle_matrix):
+    user_ids = oracle_matrix[USER_COL].unique()
+    item_ids = oracle_matrix[ITEM_COL].unique()
+    user_id_to_idx = {uid: idx for idx, uid in enumerate(user_ids)}
+    item_id_to_idx = {iid: idx for idx, iid in enumerate(item_ids)}
+
+    # standardize indices
+    user_indices = oracle_matrix[USER_COL].map(user_id_to_idx).values
+    item_indices = oracle_matrix[ITEM_COL].map(item_id_to_idx).values
+    ratings = oracle_matrix["rating"].values
+
+    matrix = torch.zeros((len(user_ids), len(item_ids)), dtype=torch.float32, device=device)
+    # Set the relevancy of each user x item pair
+    matrix[user_indices, item_indices] = torch.from_numpy(ratings).to(torch.float32).to(device)
+    return matrix
+
+def map_prediction_to_preferences(oracle_tensor, prediction):
+    item_idx_tensor = prediction
+
+    U = oracle_tensor.shape[0]
+    indices = torch.arange(U).unsqueeze(1).to(device)
 
 
+    return oracle_tensor[indices, item_idx_tensor].int()
 
-def get_user_feedback_for_item(user, item ,k, oraclePreferenceMatrix, ratingDeltaDistribution, initial_time):
-    # Build a mapping from user to their timestamp distribution
-    preference = get_user_preference_for_item(user, item, oraclePreferenceMatrix)
-    observed = click_model(k)
-    relevant = bool(preference)
-    should_click = observed and relevant
-    if (should_click):
-        feedback = 1
-        clicked_at = k
-        # Sample one delta_t random variable following the users
-        # Exponential time distribution
-        timestamp = (ratingDeltaDistribution[user].rvs(1)[0] / 60) + initial_time
-    else:
-        if (observed):
-            # Case where an item was observed, but isn´t relevant -> negative example for BPR
-            feedback = 0
-        else:
-            # Case where an item was neither observed or relevant -> we will ignore this training instance in this loop
-            feedback = None
-        clicked_at = None
-        timestamp = None
-        
-    # If user clicked the item, record the position it was in
-    # feedback = 1 if user examined and clicked, 0 if user examined and not clicked,
-    # None if otherwise
-    return user, item, feedback, clicked_at, timestamp
-
-
-def map_recommendation_to_feedback(user, rec_list, matrix, user_to_up_to_date_timestamp, ratingDeltaDistribution):
-    initial_time = user_to_up_to_date_timestamp.loc[user_to_up_to_date_timestamp["user"] == user, "delta_from_start"].squeeze()
-    results = []
-    final_time = initial_time
-    for idx, item in enumerate(rec_list):
-        user, item, feedback, clicked_at, timestamp  = get_user_feedback_for_item(user, item, idx+1, matrix, ratingDeltaDistribution, initial_time)
-        if (timestamp is not None):
-            initial_time = timestamp
-            if(timestamp > final_time):
-                final_time = timestamp
-        feedback = (user, item, feedback, clicked_at, timestamp)
-        results.append(feedback)
-    return results, final_time
-
-def get_candidate_items(user, D, unique_items):
-    user_history = set(D[D["user"] == user]["item"])
-    candidate_items = [item for item in unique_items if item not in user_history]
-    return candidate_items
-
-
-def random_rec(candidates, k):
-    return random.sample(candidates, k)
-
-def simulate_user_feedback(user, candidate_items, preference_matrix, k, user_to_up_to_date_timestamp, userToExpDistribution, recommend):
-    rec = recommend(user=torch.tensor(user, device=device), k=k, candidates=candidate_items)
-    # Generates a user feedback to each recommendation and the last recorded time of interaction in this recommendation
-    row, last_time = map_recommendation_to_feedback(user, rec, preference_matrix, user_to_up_to_date_timestamp, userToExpDistribution)
-    user_to_up_to_date_timestamp.loc[user_to_up_to_date_timestamp["user"] == user, "delta_from_start"] = last_time
-    return row, user_to_up_to_date_timestamp
-
-
-def bootstrap_clicks(D, unique_users, unique_items, preference_matrix, userToExpDistribution, k=20, rounds=10, initial_date=None):
+def click_model(predictions):
     """
-    Given unique users and unique items, recommend up to k items to every user
-    using a preference matrix as a relevancy model and using a click model
-    to simulate probability of user examinating an item.
+        Simulates a click model tensor of predictions.
 
-    Feedback signal will be fed to the D matrix.
+        Args:
+            predictions (torch.tensor.int): Tensor of predictions made by the model
 
-    We run the boostrap process for a total of an arbitrary number of rounds,
-    in order to ensure enough feedback data to train a model.
+        Returns:
+            torch.tensor.int: Returns the positions that have been examined
+
+        Notes:
+            The probability of examination is determined by a logarithmic decay function,
+            where higher-ranked items have a higher chance of being examined.
     """
+    M, K = predictions.shape
+    # Creates a tensor of item positions in the recommendation from 0 to k, 
+    # for M users.
+    tensor = torch.stack([torch.arange(K, device=device)] * M).to(device)
+    # A random examination probability that each user has for each item position.
+    examination_probability = torch.rand(M, K, device=device)
+    lambda_tensor = 1/torch.log2(tensor+1)
+    return (lambda_tensor > examination_probability).int()
 
 
-    if initial_date is None:
-        initial_date = pd.Timestamp.now().timestamp()
+def get_feedback_for_predictions(oracle_matrix, predictions):
+    oracle_tensor = get_user_preferences(oracle_matrix)
+    preferences_matrix = map_prediction_to_preferences(oracle_tensor, predictions)
+    examined_matrix = click_model(predictions)
 
-    # Setup a dataframe which maps each user to the time delta from its first interaction.
-    user_to_up_to_date_timestamp = pd.DataFrame({
-        "user": unique_users,
-        "delta_from_start": 0.0
-    })
+    should_click = 2*(preferences_matrix & examined_matrix) - 1
+
+    interaction = should_click * predictions
+    feedback_matrix = interaction * examined_matrix
+
+    mapped_feedback = torch.where(
+        feedback_matrix == 0,
+        torch.tensor(float('nan'), device=feedback_matrix.device),
+        torch.where(
+            feedback_matrix < 0,
+            torch.tensor(0, device=feedback_matrix.device),
+            torch.tensor(1, device=feedback_matrix.device)
+        )
+    )
+
+
+    return mapped_feedback
     
-    # Maps each user to its corresponding exponential distribution, which models the average time between interactions
-    # for each user
-    user_to_up_to_date_timestamp["timestamp_dist"] = user_to_up_to_date_timestamp["user"].map(userToExpDistribution)
-    new_df = D.copy()
-    for round in range(rounds):
-        rows_to_append = []
-        for user in tqdm(unique_users, desc=f"Processing users (round {round+1}/{rounds})..."):
-            candidate_items = get_candidate_items(user, D, unique_items)
-            row, user_to_up_to_date_timestamp = simulate_user_feedback(
-                user,
-                candidate_items,
-                preference_matrix,
-                k,
-                user_to_up_to_date_timestamp,
-                userToExpDistribution,
-                recommend=random_rec
-            )
-            #row, user_to_up_to_date_timestamp = map_recommendation_to_feedback(user, recs, preference_matrix, user_to_up_to_date_timestamp)
-            rows_to_append.extend(row)
-        round_df = pd.DataFrame(rows_to_append, columns=new_df.columns)
-        new_df = pd.concat([new_df, round_df], ignore_index=True)
-    final_df = pd.concat([D, new_df])
-    # Offsets the recorded timestamps by initial_date
-    final_df.loc[final_df["timestamp"].notnull(), "timestamp"] += initial_date
-    return final_df
+
+def get_candidate_items(D):
+
+    user_item_pairs = D[[USER_COL, ITEM_COL]].drop_duplicates()
+    user_item_matrix = user_item_pairs.assign(interaction=-1).pivot(index=USER_COL, columns=ITEM_COL, values='interaction').fillna(1).astype(int)
+
+    mask_from_df = torch.tensor(user_item_matrix.values, dtype=torch.int8, device=device)
+    return mask_from_df
+
+def setup_user_timestamp_distribution():
+
+    user_to_time_delta = pd.read_csv("../data/movielens-1m/median_time_diff_per_user.csv").set_index("userId")
+
+    user_to_exp_distribution = {
+        user: expon(scale=row["median_timestamp_diff"])
+        for user, row in user_to_time_delta.iterrows()
+    }
+
+    
+    return user_to_exp_distribution
+
+
+
+def random_rec(candidates, n_users, k):
+    return torch.randint(
+        size=(n_users, k),
+        low=0,
+        high=len(candidates),
+        device=device
+    )
