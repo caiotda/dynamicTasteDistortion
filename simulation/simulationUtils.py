@@ -2,7 +2,6 @@ import torch
 from scipy.stats import expon
 
 import pandas as pd
-import numpy as np
 
 from tasteDistortionOnDynamicRecs.simulationConstants import USER_COL, ITEM_COL
 
@@ -23,7 +22,7 @@ def get_user_preferences(oracle_matrix):
     ratings = oracle_matrix["rating"].values
 
     matrix = torch.zeros((len(user_ids), len(item_ids)), dtype=torch.float32, device=device)
-    # Set the relevancy os each user x item pair
+    # Set the relevancy of each user x item pair
     matrix[user_indices, item_indices] = torch.from_numpy(ratings).to(torch.float32).to(device)
     return matrix
 

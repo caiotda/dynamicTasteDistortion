@@ -95,16 +95,16 @@ class Simulator:
         
         """
         
-        boostrapped_df = pd.DataFrame([], columns=["user", "item", "click", "clicked_at", "timestamp"])
+        bootstrapped_df = pd.DataFrame([], columns=["user", "item", "click", "clicked_at", "timestamp"])
         for _ in range(bootstrapping_rounds):
             round_df = self.simulate_user_feedback(
                 mask=None,
                 feedback_from_bootstrap=True,
                 k=k
             )
-            boostrapped_df = pd.concat([boostrapped_df, round_df], ignore_index=True)
+            bootstrapped_df = pd.concat([bootstrapped_df, round_df], ignore_index=True)
 
-        return boostrapped_df   
+        return bootstrapped_df   
 
 
 
