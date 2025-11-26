@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from calibratedRecs.metrics import mace
+from calibratedRecs.calibrationUtils import preprocess_genres
 from tasteDistortionOnDynamicRecs.simulation.simulationUtils import random_rec, get_feedback_for_predictions
 from tasteDistortionOnDynamicRecs.simulationConstants import USER_COL, ITEM_COL, GENRES_COL
 from tasteDistortionOnDynamicRecs.simulation.tensorUtils import get_matrix_coordinates
@@ -21,7 +22,7 @@ class Simulator:
             users = list(self.user_idx_to_id.values())
         else:
             users = user_sample
-        self.oracle_matrix = oracle_matrix[oracle_matrix[USER_COL].isin(users)]
+        self.oracle_matrix = preprocess_genres(oracle_matrix[oracle_matrix[USER_COL].isin(users)])
         self.model = model
         self.initial_date = initial_date
 
@@ -74,11 +75,11 @@ class Simulator:
 
         timestamps = [(self.timestamp_distribution[user].rvs(1)[0] / 60) + self.initial_date for user in user_ids]
         entries = list(zip(users_indices, items, feedbacks, click_positions, timestamps))
-        interaction_df = pd.DataFrame(entries, columns=["user", "item", "click", "clicked_at", "timestamp"])
+        interaction_df = pd.DataFrame(entries, columns=["user", "item", "relevant", "clicked_at", "timestamp"])
 
 
-        interaction_df.loc[interaction_df["click"] != 1.0, "clicked_at"] = np.nan
-        interaction_df.loc[interaction_df["click"] != 1.0, "timestamp"] = np.nan
+        interaction_df.loc[interaction_df["relevant"] != 1.0, "clicked_at"] = np.nan
+        interaction_df.loc[interaction_df["relevant"] != 1.0, "timestamp"] = np.nan
 
         return interaction_df
 
@@ -95,7 +96,7 @@ class Simulator:
         
         """
         
-        bootstrapped_df = pd.DataFrame([], columns=["user", "item", "click", "clicked_at", "timestamp"])
+        bootstrapped_df = pd.DataFrame([], columns=["user", "item", "relevant", "clicked_at", "timestamp"])
         for _ in range(bootstrapping_rounds):
             round_df = self.simulate_user_feedback(
                 mask=None,
@@ -104,7 +105,9 @@ class Simulator:
             )
             bootstrapped_df = pd.concat([bootstrapped_df, round_df], ignore_index=True)
 
-        return bootstrapped_df   
+        bootstrapped_df["relevant"] = bootstrapped_df["relevant"].fillna(0).astype(int)
+        bootstrapped_df["clicked_at"] = bootstrapped_df["clicked_at"].fillna(-1).astype(int)
+        return bootstrapped_df
 
 
 
@@ -152,7 +155,7 @@ class Simulator:
             )
             if (round_idx % L == 0):
                 print("retraining model...")
-                self.model = train(self.model, boostrapped_df)
+                self.model, _ = train(self.model, boostrapped_df)
                 print("Calculating mace")
                 rec_df_grouped = boostrapped_df.groupby(USER_COL).agg({ITEM_COL: list}).reset_index().rename(columns={ITEM_COL: "rec"})
                 iteration_mace = mace(df=rec_df_grouped, user2history=user2history, recCol='rec', item2genreMap=item2genreMap)
