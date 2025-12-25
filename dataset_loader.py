@@ -8,11 +8,26 @@ import zipfile
 import os
 import re
 import argparse
+import json
 
+import math
 
-from simulationConstants import MOVIELENS_PATH, YELP_PATH, USER_COL, ITEM_COL, GENRES_COL
+from simulationConstants import (
+    MOVIELENS_PATH,
+    YELP_PATH,
+    USER_COL,
+    ITEM_COL,
+    GENRES_COL,
+    RATING_COL,
+)
 
-size_to_file_name = {"s": "1m", "m": "10m", "l": "20m"}
+ml_size_to_file_name = {"s": "1m", "m": "10m", "l": "20m"}
+yelp_size_to_sample_size = {
+    "s": 1_000_000,
+    "m": 10_000_000,
+    "l": 20_000_000,
+    "xg": math.inf,
+}
 
 
 synonyms = {
@@ -27,15 +42,17 @@ REVIEWS_PER_USER_THRESHOLD = 30
 
 
 def get_ml_url(size):
-    file_size = size_to_file_name[size]
+    file_size = ml_size_to_file_name[size]
     return f"https://files.grouplens.org/datasets/movielens/ml-{file_size}.zip"
 
 
 def download(dataset_url, destination_dir):
+    if os.path.exists(destination_dir) and os.listdir(destination_dir):
+        print(f"Skipping: '{destination_dir}' already exists and contains files.")
+        return destination_dir
     print("Downloading file...")
     if not os.path.exists(destination_dir):
         os.makedirs(destination_dir)
-    file_name = os.path.basename(dataset_url)
     if os.path.exists(file_name):
         os.remove(file_name)
         # Remove all .tmp files in the current folder
@@ -52,7 +69,7 @@ def download(dataset_url, destination_dir):
     return file_name
 
 
-def read_yelp_ml_raw():
+def download_yelp_files():
     yelp_url = (
         "https://www.kaggle.com/api/v1/datasets/download/yelp-dataset/yelp-dataset"
     )
@@ -61,12 +78,57 @@ def read_yelp_ml_raw():
     return file_name
 
 
+def read_yelp_file(yelp_path, file, limit=math.inf):
+    data_file = open(f"{yelp_path}{file}")
+    data = []
+    for line_number, line in enumerate(data_file, 1):
+        if line_number > limit:
+            break
+        data.append(json.loads(line))
+    data_file.close()
+    return pd.DataFrame(data)
+
+
+def read_yelp_raw(size):
+    yelp_path = download_yelp_files()
+    review_file = "yelp_academic_dataset_review.json"
+    user_file = "yelp_academic_dataset_user.json"
+    business_file = "yelp_academic_dataset_business.json"
+
+    users_df = read_yelp_file(yelp_path, user_file, limit=size)[
+        ["user_id", "review_count"]
+    ]
+    filtered_users_df = users_df[users_df["review_count"] >= REVIEWS_PER_USER_THRESHOLD]
+    users_to_keep = list(filtered_users_df["user_id"].unique())
+
+    reviews_df = read_yelp_file(yelp_path, review_file, limit=size)[
+        ["user_id", "business_id", "stars", "date"]
+    ]
+    filtered_reviews = reviews_df[reviews_df["user_id"].isin(users_to_keep)]
+
+    business_df = read_yelp_file(yelp_path, business_file, limit=size)[
+        ["business_id", "categories"]
+    ].drop_duplicates()
+    yelp_df = filtered_reviews.merge(business_df, on="business_id")
+
+    return yelp_df.rename(
+        columns={
+            "user_id": USER_COL,
+            "business_id": ITEM_COL,
+            "categories": GENRES_COL,
+            "stars": RATING_COL,
+        }
+    )
+
+
 def read_ml_raw(size):
     dataset_url = get_ml_url(size)
     destination_dir = f"{MOVIELENS_PATH}/raw/"
 
-    file_name = download(dataset_url, destination_dir)
-    file_name_cleaned = "ml-10M100K" if size == "m" else f"ml-{size_to_file_name[size]}"
+    _ = download(dataset_url, destination_dir)
+    file_name_cleaned = (
+        "ml-10M100K" if size == "m" else f"ml-{ml_size_to_file_name[size]}"
+    )
     files_dir = destination_dir + file_name_cleaned
     file_format = "csv" if size == "l" else "dat"
     sep = "," if size == "l" else "::"
@@ -132,9 +194,7 @@ def filter_inactive_users(df, threshold=REVIEWS_PER_USER_THRESHOLD):
     return filtered_df
 
 
-def process_ml_df(df):
-    # Padronizar user id e item id
-    print("Preprocessing dataset...")
+def standardize_ids(df):
 
     processed_df = df.copy()
 
@@ -149,6 +209,14 @@ def process_ml_df(df):
     processed_df[USER_COL] = processed_df[USER_COL].map(user_id_map)
     processed_df[ITEM_COL] = processed_df[ITEM_COL].map(item_id_map)
 
+    return processed_df
+
+
+def process_ml_df(df):
+    # Padronizar user id e item id
+    print("Preprocessing dataset...")
+    processed_df = standardize_ids(df)
+
     # Padronizar a coluna de generos
 
     processed_df[GENRES_COL] = preprocess_genres(df, GENRES_COL)
@@ -161,9 +229,29 @@ def process_ml_df(df):
     return filtered_df
 
 
+def process_yelp_df(df):
+    # Padronizar user id e item id
+    print("Preprocessing dataset...")
+    processed_df = standardize_ids(df)
+
+    # Padronizar a coluna de generos
+
+    processed_df[GENRES_COL] = preprocess_genres(df, GENRES_COL, sep=",")
+    # ratings >= 4 -> 1 (binarized)
+    processed_df["binarized_rating"] = processed_df[RATING_COL].apply(
+        lambda rating: int(rating >= 4)
+    )
+    return processed_df
+
+
 def get_ml_df(size):
     raw_df = read_ml_raw(size)
     return process_ml_df(raw_df)
+
+
+def get_yelp_df(size):
+    raw_df = read_yelp_raw(size)
+    return process_yelp_df(raw_df)
 
 
 def main():
@@ -175,19 +263,26 @@ def main():
         help="Dataset size: s (1m), m (10m), l (20m)",
     )
     parser.add_argument(
-        "--data", choices=["ml", "yelp"], required=True, help="Dataset type: ml (MovieLens)"
+        "--data",
+        choices=["ml", "yelp"],
+        required=True,
+        help="Dataset type: ml (MovieLens)",
     )
 
     args = parser.parse_args()
-    size = size_to_file_name[args.size]
     if args.data == "ml":
+        size = ml_size_to_file_name[args.size]
+
         df = get_ml_df(args.size)
         output_file = f"{MOVIELENS_PATH}/ml_{size}.csv"
         df.to_csv(output_file, index=False)
         print(f"Processed dataset saved to {output_file}")
     if args.data == "yelp":
-        destination = read_yelp_ml_raw()
-        print(f"Yelp dataset saved to {destination}")
+        size = yelp_size_to_sample_size[args.size]
+        df = get_yelp_df(size)
+        output_file = f"{YELP_PATH}/yelp_{size}.csv"
+        df.to_csv(output_file, index=False)
+        print(f"Processed dataset saved to {output_file}")
 
 
 if __name__ == "__main__":

@@ -18,3 +18,4 @@ ML_1M_1K_SAMPLE_FILLED_PATH_PKL = f"{SIMULATION_PATH}/movielens_1m_1k_sample_sin
 USER_COL="user"
 ITEM_COL="item"
 GENRES_COL="genres"
+RATING_COL="rating"
