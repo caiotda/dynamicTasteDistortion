@@ -21,8 +21,15 @@ from simulationConstants import (
     RATING_COL,
 )
 
-ml_size_to_file_name = {"s": "1m", "m": "10m", "l": "20m"}
-yelp_size_to_sample_size = {
+input_size_to_file_name = {
+    "xs": "100k",
+    "s": "1m",
+    "m": "10m",
+    "l": "20m",
+    "xl": "full",
+}
+input_size_to_sample_size = {
+    "xs": 100_00,
     "s": 1_000_000,
     "m": 10_000_000,
     "l": 20_000_000,
@@ -42,7 +49,7 @@ REVIEWS_PER_USER_THRESHOLD = 30
 
 
 def get_ml_url(size):
-    file_size = ml_size_to_file_name[size]
+    file_size = input_size_to_file_name[size]
     return f"https://files.grouplens.org/datasets/movielens/ml-{file_size}.zip"
 
 
@@ -53,6 +60,7 @@ def download(dataset_url, destination_dir):
     print("Downloading file...")
     if not os.path.exists(destination_dir):
         os.makedirs(destination_dir)
+    file_name = os.path.basename(dataset_url)
     if os.path.exists(file_name):
         os.remove(file_name)
         # Remove all .tmp files in the current folder
@@ -74,8 +82,8 @@ def download_yelp_files():
         "https://www.kaggle.com/api/v1/datasets/download/yelp-dataset/yelp-dataset"
     )
     destination_dir = f"{YELP_PATH}/raw/"
-    file_name = download(yelp_url, destination_dir)
-    return file_name
+    _ = download(yelp_url, destination_dir)
+    return destination_dir
 
 
 def read_yelp_file(yelp_path, file, limit=math.inf):
@@ -127,7 +135,7 @@ def read_ml_raw(size):
 
     _ = download(dataset_url, destination_dir)
     file_name_cleaned = (
-        "ml-10M100K" if size == "m" else f"ml-{ml_size_to_file_name[size]}"
+        "ml-10M100K" if size == "m" else f"ml-{input_size_to_file_name[size]}"
     )
     files_dir = destination_dir + file_name_cleaned
     file_format = "csv" if size == "l" else "dat"
@@ -235,8 +243,8 @@ def process_yelp_df(df):
     processed_df = standardize_ids(df)
 
     # Padronizar a coluna de generos
-
-    processed_df[GENRES_COL] = preprocess_genres(df, GENRES_COL, sep=",")
+    processed_df = processed_df[~processed_df[GENRES_COL].isna()]
+    processed_df[GENRES_COL] = preprocess_genres(processed_df, GENRES_COL, SEP=",")
     # ratings >= 4 -> 1 (binarized)
     processed_df["binarized_rating"] = processed_df[RATING_COL].apply(
         lambda rating: int(rating >= 4)
@@ -258,7 +266,7 @@ def main():
     parser = argparse.ArgumentParser(description="Load and preprocess datasets.")
     parser.add_argument(
         "--size",
-        choices=["s", "m", "l"],
+        choices=["xs", "s", "m", "l", "xl"],
         required=True,
         help="Dataset size: s (1m), m (10m), l (20m)",
     )
@@ -271,16 +279,17 @@ def main():
 
     args = parser.parse_args()
     if args.data == "ml":
-        size = ml_size_to_file_name[args.size]
+        size = input_size_to_file_name[args.size]
 
         df = get_ml_df(args.size)
         output_file = f"{MOVIELENS_PATH}/ml_{size}.csv"
         df.to_csv(output_file, index=False)
         print(f"Processed dataset saved to {output_file}")
     if args.data == "yelp":
-        size = yelp_size_to_sample_size[args.size]
+        size = input_size_to_sample_size[args.size]
+        output_file_size = input_size_to_file_name[args.size]
         df = get_yelp_df(size)
-        output_file = f"{YELP_PATH}/yelp_{size}.csv"
+        output_file = f"{YELP_PATH}/yelp_{output_file_size}.csv"
         df.to_csv(output_file, index=False)
         print(f"Processed dataset saved to {output_file}")
 
