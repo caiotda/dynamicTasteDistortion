@@ -14,6 +14,7 @@ import math
 
 from simulationConstants import (
     MOVIELENS_PATH,
+    STEAM_PATH,
     YELP_PATH,
     USER_COL,
     ITEM_COL,
@@ -86,8 +87,51 @@ def download_yelp_files():
     return destination_dir
 
 
-def read_yelp_file(yelp_path, file, limit=math.inf):
-    data_file = open(f"{yelp_path}{file}")
+def download_steam_file():
+    steam_url = "https://www.kaggle.com/api/v1/datasets/download/antonkozyriev/game-recommendations-on-steam"
+    destination_dir = f"{STEAM_PATH}/raw/"
+    _ = download(steam_url, destination_dir)
+    return destination_dir
+
+
+def read_steam_sub_file(file_name):
+    return pd.read_csv(f"{STEAM_PATH}/raw/{file_name}.csv")
+
+
+def read_steam_raw(size):
+    steam_path = download_steam_file()
+    print("Reading steam sub files...")
+    reviews = read_steam_sub_file("recommendations")[
+        ["user_id", "app_id", "is_recommended"]
+    ]
+    users = read_steam_sub_file("users")
+    active_users = users[users["reviews"] > REVIEWS_PER_USER_THRESHOLD][
+        "user_id"
+    ].tolist()
+    filtered_reviews = reviews[reviews["user_id"].isin(active_users)]
+
+    games = read_json_file(steam_path, "games_metadata.json")
+    games["num_tags"] = games["tags"].apply(len)
+    filtered_games = games[games["num_tags"] > 0]
+    filtered_games["genres"] = filtered_games["tags"].apply(lambda l: ",".join(l))
+    steam_df = filtered_reviews.merge(filtered_games, on="app_id")[
+        ["user_id", "app_id", "genres", "is_recommended"]
+    ].sample(n=size)
+    print("Done!")
+    return steam_df.rename(
+        columns={
+            "user_id": USER_COL,
+            "app_id": ITEM_COL,
+            "genres": GENRES_COL,
+            "is_recommended": RATING_COL,
+        }
+    )
+
+
+def read_json_file(base_path, file, limit=math.inf):
+    if base_path.endswith("/") is False:
+        base_path += "/"
+    data_file = open(f"{base_path}{file}")
     data = []
     for line_number, line in enumerate(data_file, 1):
         if line_number > limit:
@@ -103,18 +147,18 @@ def read_yelp_raw(size):
     user_file = "yelp_academic_dataset_user.json"
     business_file = "yelp_academic_dataset_business.json"
 
-    users_df = read_yelp_file(yelp_path, user_file, limit=size)[
+    users_df = read_json_file(yelp_path, user_file, limit=size)[
         ["user_id", "review_count"]
     ]
     filtered_users_df = users_df[users_df["review_count"] >= REVIEWS_PER_USER_THRESHOLD]
     users_to_keep = list(filtered_users_df["user_id"].unique())
 
-    reviews_df = read_yelp_file(yelp_path, review_file, limit=size)[
+    reviews_df = read_json_file(yelp_path, review_file, limit=size)[
         ["user_id", "business_id", "stars", "date"]
     ]
     filtered_reviews = reviews_df[reviews_df["user_id"].isin(users_to_keep)]
 
-    business_df = read_yelp_file(yelp_path, business_file, limit=size)[
+    business_df = read_json_file(yelp_path, business_file, limit=size)[
         ["business_id", "categories"]
     ].drop_duplicates()
     yelp_df = filtered_reviews.merge(business_df, on="business_id")
@@ -169,10 +213,7 @@ def read_ml_raw(size):
 
 def preprocess_genres(df, genre_col="genres", SEP="|"):
     return df[genre_col].apply(
-        lambda text: [
-            normalize_word(re.sub(r"[^a-zA-Z0-9\s]", "", token))
-            for token in text.split(SEP)
-        ]
+        lambda text: [text_preprocess(token) for token in text.split(SEP)]
     )
 
 
@@ -181,6 +222,7 @@ def normalize_word(word):
 
 
 def text_preprocess(text):
+    text = normalize_word(text)
     text = text.lower()
     text = text.strip()
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("utf-8")
@@ -231,10 +273,22 @@ def process_ml_df(df):
     # Filtrar usuarios inativos?
     filtered_df = filter_inactive_users(processed_df)
     # ratings >= 4 -> 1 (binarized)
-    filtered_df["binarized_rating"] = filtered_df["rating"].apply(
+    filtered_df["binarized_rating"] = filtered_df[RATING_COL].apply(
         lambda rating: int(rating >= 4)
     )
     return filtered_df
+
+
+def process_steam_df(df):
+    # Padronizar user id e item id
+    print("Preprocessing dataset...")
+    processed_df = standardize_ids(df)
+
+    processed_df[GENRES_COL] = preprocess_genres(processed_df, GENRES_COL, SEP=",")
+    processed_df["binarized_rating"] = processed_df[RATING_COL].apply(
+        lambda boolean_rating: int(boolean_rating)
+    )
+    return processed_df
 
 
 def process_yelp_df(df):
@@ -262,6 +316,11 @@ def get_yelp_df(size):
     return process_yelp_df(raw_df)
 
 
+def get_steam_df(size):
+    raw_df = read_steam_raw(size)
+    return process_steam_df(raw_df)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Load and preprocess datasets.")
     parser.add_argument(
@@ -272,9 +331,9 @@ def main():
     )
     parser.add_argument(
         "--data",
-        choices=["ml", "yelp"],
+        choices=["ml", "yelp", "steam"],
         required=True,
-        help="Dataset type: ml (MovieLens)",
+        help="Dataset type: ml (MovieLens); yelp; steam",
     )
 
     args = parser.parse_args()
@@ -290,6 +349,13 @@ def main():
         output_file_size = input_size_to_file_name[args.size]
         df = get_yelp_df(size)
         output_file = f"{YELP_PATH}/yelp_{output_file_size}.csv"
+        df.to_csv(output_file, index=False)
+        print(f"Processed dataset saved to {output_file}")
+    if args.data == "steam":
+        size = input_size_to_sample_size[args.size]
+        output_file_size = input_size_to_file_name[args.size]
+        df = get_steam_df(size)
+        output_file = f"{STEAM_PATH}/steam_{output_file_size}.csv"
         df.to_csv(output_file, index=False)
         print(f"Processed dataset saved to {output_file}")
 
