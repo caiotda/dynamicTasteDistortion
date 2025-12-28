@@ -34,7 +34,7 @@ input_size_to_sample_size = {
     "s": 1_000_000,
     "m": 10_000_000,
     "l": 20_000_000,
-    "xg": math.inf,
+    "xl": math.inf,
 }
 
 
@@ -327,7 +327,7 @@ def main():
         "--size",
         choices=["xs", "s", "m", "l", "xl"],
         required=True,
-        help="Dataset size: s (1m), m (10m), l (20m)",
+        help="Dataset size: xs (100k), s (1m), m (10m), l (20m), xl (As large as possible)",
     )
     parser.add_argument(
         "--data",
