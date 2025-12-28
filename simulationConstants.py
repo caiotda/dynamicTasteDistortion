@@ -4,7 +4,7 @@ MOVIELENS_PATH = "data/movielens-1m"
 ML_DATA_PATH = f"{MOVIELENS_PATH}/movielens_1m.csv"
 ML_RATINGS_DATA_PATH = f"{MOVIELENS_PATH}/movielens_1m_ratings.csv"
 ML_BIN_RATINGS_DATA_PATH = f"{MOVIELENS_PATH}/movielens_1m_bin_ratings.csv"
-FOOD_COM_PATH = "data/food"
+STEAM_PATH = "data/steam"
 YELP_PATH = "data/yelp"
 
 
@@ -18,3 +18,4 @@ ML_1M_1K_SAMPLE_FILLED_PATH_PKL = f"{SIMULATION_PATH}/movielens_1m_1k_sample_sin
 USER_COL="user"
 ITEM_COL="item"
 GENRES_COL="genres"
+RATING_COL="rating"
