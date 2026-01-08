@@ -337,27 +337,25 @@ def main():
     )
 
     args = parser.parse_args()
+    size = input_size_to_sample_size[args.size]
+    output_file_size = input_size_to_file_name[args.size]
+
     if args.data == "ml":
         size = input_size_to_file_name[args.size]
-
+        output_file = f"{MOVIELENS_PATH}/ml_{size}"
         df = get_ml_df(args.size)
-        output_file = f"{MOVIELENS_PATH}/ml_{size}.csv"
-        df.to_csv(output_file, index=False)
-        print(f"Processed dataset saved to {output_file}")
+
     if args.data == "yelp":
-        size = input_size_to_sample_size[args.size]
-        output_file_size = input_size_to_file_name[args.size]
         df = get_yelp_df(size)
-        output_file = f"{YELP_PATH}/yelp_{output_file_size}.csv"
-        df.to_csv(output_file, index=False)
-        print(f"Processed dataset saved to {output_file}")
+        output_file = f"{YELP_PATH}/yelp_{output_file_size}"
+
     if args.data == "steam":
-        size = input_size_to_sample_size[args.size]
-        output_file_size = input_size_to_file_name[args.size]
         df = get_steam_df(size)
-        output_file = f"{STEAM_PATH}/steam_{output_file_size}.csv"
-        df.to_csv(output_file, index=False)
-        print(f"Processed dataset saved to {output_file}")
+        output_file = f"{STEAM_PATH}/steam_{output_file_size}"
+
+    df.to_csv(f"{output_file}.csv", index=False)
+    df.to_pickle(f"{output_file}.pkl")
+    print(f"Processed dataset saved to path {output_file}")
 
 
 if __name__ == "__main__":
