@@ -23,18 +23,14 @@ from simulationConstants import (
 )
 
 input_size_to_file_name = {
-    "xs": "100k",
     "s": "1m",
     "m": "10m",
     "l": "20m",
-    "xl": "full",
 }
 input_size_to_sample_size = {
-    "xs": 100_00,
     "s": 1_000_000,
     "m": 10_000_000,
     "l": 20_000_000,
-    "xl": math.inf,
 }
 
 
@@ -334,9 +330,9 @@ def main():
     parser = argparse.ArgumentParser(description="Load and preprocess datasets.")
     parser.add_argument(
         "--size",
-        choices=["xs", "s", "m", "l", "xl"],
+        choices=["s", "m", "l"],
         required=True,
-        help="Dataset size: xs (100k), s (1m), m (10m), l (20m), xl (As large as possible)",
+        help="Dataset size: s (1m), m (10m), l (20m). If Sample size is larger than dataset, then everything is returned",
     )
     parser.add_argument(
         "--data",
