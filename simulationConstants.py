@@ -1,3 +1,10 @@
+input_size_to_file_name = {
+    "s": "1m",
+    "m": "10m",
+    "l": "20m",
+}
+
+
 MOVIELENS_PATH = "data/movielens"
 
 
@@ -7,6 +14,9 @@ ML_BIN_RATINGS_DATA_PATH = f"{MOVIELENS_PATH}/movielens_1m_bin_ratings.csv"
 STEAM_PATH = "data/steam"
 YELP_PATH = "data/yelp"
 
+ARTIFACTS_PATH = "artifacts"
+RESULTS_PATH = f"{ARTIFACTS_PATH}/results"
+MODEL_ARTIFACTS_PATH = f"{ARTIFACTS_PATH}/model"
 
 SIMULATION_PATH = "data/simulation"
 ML_1M_ORACLE_PATH = f"{SIMULATION_PATH}/movielens_1m_oracle.csv"
