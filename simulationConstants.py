@@ -1,4 +1,4 @@
-MOVIELENS_PATH = "data/movielens-1m"
+MOVIELENS_PATH = "data/movielens"
 
 
 ML_DATA_PATH = f"{MOVIELENS_PATH}/movielens_1m.csv"
@@ -12,10 +12,14 @@ SIMULATION_PATH = "data/simulation"
 ML_1M_ORACLE_PATH = f"{SIMULATION_PATH}/movielens_1m_oracle.csv"
 ML_1M_FILLED_PATH = f"{SIMULATION_PATH}/movielens_1m_sinthetically_filled.csv"
 ML_1M_FILLED_PATH_PKL = f"{SIMULATION_PATH}/movielens_1m_sinthetically_filled.pkl"
-ML_1M_1K_SAMPLE_FILLED_PATH = f"{SIMULATION_PATH}/movielens_1m_1k_sample_sinthetically_filled.csv"
-ML_1M_1K_SAMPLE_FILLED_PATH_PKL = f"{SIMULATION_PATH}/movielens_1m_1k_sample_sinthetically_filled.pkl"
+ML_1M_1K_SAMPLE_FILLED_PATH = (
+    f"{SIMULATION_PATH}/movielens_1m_1k_sample_sinthetically_filled.csv"
+)
+ML_1M_1K_SAMPLE_FILLED_PATH_PKL = (
+    f"{SIMULATION_PATH}/movielens_1m_1k_sample_sinthetically_filled.pkl"
+)
 
-USER_COL="user"
-ITEM_COL="item"
-GENRES_COL="genres"
-RATING_COL="rating"
+USER_COL = "user"
+ITEM_COL = "item"
+GENRES_COL = "genres"
+RATING_COL = "rating"

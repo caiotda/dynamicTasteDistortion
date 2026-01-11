@@ -23,18 +23,14 @@ from simulationConstants import (
 )
 
 input_size_to_file_name = {
-    "xs": "100k",
     "s": "1m",
     "m": "10m",
     "l": "20m",
-    "xl": "full",
 }
 input_size_to_sample_size = {
-    "xs": 100_00,
     "s": 1_000_000,
     "m": 10_000_000,
     "l": 20_000_000,
-    "xl": math.inf,
 }
 
 
@@ -114,9 +110,18 @@ def read_steam_raw(size):
     games["num_tags"] = games["tags"].apply(len)
     filtered_games = games[games["num_tags"] > 0]
     filtered_games["genres"] = filtered_games["tags"].apply(lambda l: ",".join(l))
-    steam_df = filtered_reviews.merge(filtered_games, on="app_id")[
+    unsampled_steam_df = filtered_reviews.merge(filtered_games, on="app_id")[
         ["user_id", "app_id", "genres", "is_recommended"]
-    ].sample(n=size)
+    ]
+
+    original_size = unsampled_steam_df.shape[0]
+    if size > original_size:
+        sample_size = original_size
+        print(f"Requested sample size larger than dataset! Defaulting to full dataset.")
+    else:
+        sample_size = size
+
+    steam_df = unsampled_steam_df.sample(n=sample_size)
     print("Done!")
     return steam_df.rename(
         columns={
@@ -325,9 +330,9 @@ def main():
     parser = argparse.ArgumentParser(description="Load and preprocess datasets.")
     parser.add_argument(
         "--size",
-        choices=["xs", "s", "m", "l", "xl"],
+        choices=["s", "m", "l"],
         required=True,
-        help="Dataset size: xs (100k), s (1m), m (10m), l (20m), xl (As large as possible)",
+        help="Dataset size: s (1m), m (10m), l (20m). If Sample size is larger than dataset, then everything is returned",
     )
     parser.add_argument(
         "--data",
@@ -351,6 +356,8 @@ def main():
 
     if args.data == "steam":
         df = get_steam_df(size)
+        if size > df.shape[0]:
+            output_file_size = "full"
         output_file = f"{STEAM_PATH}/steam_{output_file_size}"
 
     df.to_csv(f"{output_file}.csv", index=False)
