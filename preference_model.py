@@ -20,6 +20,7 @@ from simulationConstants import (
     input_size_to_file_name,
     RESULTS_PATH,
     MODEL_ARTIFACTS_PATH,
+    SIMULATION_PATH,
 )
 
 DATA_TO_PATH = {"ml": MOVIELENS_PATH, "yelp": YELP_PATH, "steam": STEAM_PATH}
@@ -110,7 +111,9 @@ def choose_best_model(df, data_type):
         model_config = ModelChooser(model_name)
         models = model_config.yield_models()
 
-        for model, params in models:
+        for model, params in tqdm(
+            models, desc=f"Starting optimization for model {model_name}..."
+        ):
             f1_scores = []
 
             for train_users_idx, test_users_idx in kf.split(usuarios):
@@ -147,8 +150,15 @@ def choose_best_model(df, data_type):
             for (model_config, params), score in f1_results.items()
         ]
     )
+    destination_dir = f"{RESULTS_PATH}/{data_type}"
+    model_artifacts_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}"
+    # Mover isso pra main?
+    if not os.path.exists(destination_dir):
+        os.makedirs(destination_dir)
+    if not os.path.exists(model_artifacts_path):
+        os.makedirs(model_artifacts_path)
 
-    f1_df.to_pickle(f"{RESULTS_PATH}/{data_type}/oracle_model_f1_results.pkl")
+    f1_df.to_pickle(f"{destination_dir}/oracle_model_f1_results.pkl")
 
     best_results = f1_df.sort_values(by="f1_score", ascending=False).iloc[0]
     best_model = best_results.model
@@ -156,8 +166,76 @@ def choose_best_model(df, data_type):
 
     model_class = MODEL_NAME_TO_CLASS_NAME[best_model]
     oracle_model = model_class(**best_params)
-    pickle.dump(oracle_model, f"{MODEL_ARTIFACTS_PATH}/{data_type}/oracle_model.pkl")
+    artifact = {"params": best_params, "model_class": model_class}
+    with open(f"{MODEL_ARTIFACTS_PATH}/{data_type}/oracle_model_params.pkl", "wb") as f:
+        pickle.dump(artifact, f)
+
     return oracle_model
+
+
+def fit_evaluate(model, full_df, test_size=0.3):
+
+    df_main_cols = full_df[["user", "item", "rating"]]
+    trainset, testset = train_test_split(df_main_cols, test_size=test_size)
+    reader = Reader(rating_scale=(1, 5))
+    trainset = SurpriseDataset.load_from_df(trainset, reader).build_full_trainset()
+    testset = list(testset.itertuples(index=False, name=None))
+
+    fit_model = model.fit(trainset)
+    predictions = model.test(testset)
+    y_pred = [1 if pred.est >= 4 else 0 for pred in predictions]
+    y_true = [1 if pred.r_ui >= 4 else 0 for pred in predictions]
+    test_set_f1_score = f1_score(y_true, y_pred)
+
+    return fit_model, test_set_f1_score
+
+
+def fill_out_matrix(df, model):
+    reader = Reader(rating_scale=(1, 5))
+    trainset = SurpriseDataset.load_from_df(
+        df[["user", "item", "rating"]], reader
+    ).build_full_trainset()
+    model.fit(trainset)
+    all_users = trainset.all_users()
+    all_items = trainset.all_items()
+
+    user_ids = [trainset.to_raw_uid(u) for u in all_users]
+    item_ids = [trainset.to_raw_iid(i) for i in all_items]
+
+    predictions = []
+    for user_id in tqdm(user_ids, desc="Predicting missing ratings"):
+        surprise_internal_user_id = trainset.to_inner_uid(user_id)
+        rated_item_ids = set(
+            [
+                trainset.to_raw_iid(item)
+                for item, _ in trainset.ur[surprise_internal_user_id]
+            ]
+        )
+        for item_id in item_ids:
+            if item_id not in rated_item_ids:
+                # predict the rating
+                pred = model.predict(user_id, item_id)
+                predictions.append([user_id, item_id, pred])
+
+    # binarize predictions
+    processed_predictions = [
+        [pred[0], pred[1], int(pred[2].est >= 4)] for pred in predictions
+    ]
+
+    predictions_df = pd.DataFrame(
+        processed_predictions, columns=["user", "item", "rating"]
+    )
+
+    # Aqui vai dar problema. Genres não é hashable por ser lista.
+    genres_df = df[["item", "genres"]].drop_duplicates(subset="item")
+    predictions_df = predictions_df.merge(genres_df, on="item")
+    base_df = df[["user", "item", "genres", "rating"]]
+    base_df.loc[:, "rating"] = base_df["rating"].apply(lambda rating: int(rating >= 4))
+
+    # Combine missing entries with previously filled
+    df_filled = pd.concat([base_df, predictions_df], ignore_index=True)
+
+    return df_filled
 
 
 def main():
@@ -176,18 +254,41 @@ def main():
     )
     args = parser.parse_args()
     data_type = args.data
+    print("Loading base dataset...")
     file_base_path = DATA_TO_PATH[data_type]
     file_size = input_size_to_file_name[args.size]
     file_path = f"{file_base_path}/{data_type}_{file_size}.pkl"
     base_file = pd.read_pickle(file_path)
-    model_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}/oracle_model.pkl"
-    if os.path.exists(model_path):
+    print("Done!")
+    params_path = (
+        f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}/oracle_model_params.pkl"
+    )
+    if os.path.exists(params_path):
         print(
             f"Oracle model trained on {data_type}_{file_size} found!Skipping model selection"
         )
-        oracle_model = pickle.load(model_path)
+        with open(params_path, "rb") as f:
+            oracle_model_artifact = pickle.load(f)
+
+        model_class = oracle_model_artifact["model_class"]
+        model_params = oracle_model_artifact["params"]
+        oracle_model = model_class(**model_params)
     else:
+        print("Starting model selection...")
         oracle_model = choose_best_model(base_file, f"{data_type}_{file_size}")
+
+    print("Fitting and evaluating oracle model...")
+    trained_model, f1_score_test = fit_evaluate(
+        oracle_model, full_df=base_file, test_size=0.3
+    )
+    print(
+        f"Model selection finished! model achieved f1 score of {f1_score_test:.2f} on test_set"
+    )
+    output_path = f"{SIMULATION_PATH}/{data_type}_{file_size}_oracle.pkl"
+    print("Filling up rating matrix...")
+    filled_oracle_matrix = fill_out_matrix(df=base_file, model=trained_model)
+    print(f"Writing filled out matrix to {output_path}")
+    filled_oracle_matrix.to_pkl(output_path)
 
 
 if __name__ == "__main__":
