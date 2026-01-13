@@ -256,13 +256,13 @@ def get_timestamp_behavior(df):
     positive_timestamp_diff = list(
         avg_std_time_diff_per_user[
             avg_std_time_diff_per_user["median_timestamp_diff"] > 0
-        ].userId
+        ][USER_COL]
     )
 
     global_median_timestamp_diff = np.median(
         np.diff(
-            df[df["userId"].isin(positive_timestamp_diff)].sort_values(
-                ["userId", "timestamp"]
+            df[df[USER_COL].isin(positive_timestamp_diff)].sort_values(
+                [USER_COL, "timestamp"]
             )["timestamp"]
         )
     )
@@ -321,17 +321,33 @@ def main():
         f"Model selection finished! model achieved f1 score of {f1_score_test:.2f} on test_set"
     )
     output_path = f"{SIMULATION_PATH}/{data_type}_{file_size}_oracle.pkl"
-    print("Filling up rating matrix...")
-    filled_oracle_matrix = fill_out_matrix(df=base_file, model=trained_model)
-    print(f"Writing filled out matrix to {output_path}")
-    filled_oracle_matrix.to_pickle(output_path)
-
+    if os.path.exists(output_path):
+        print(
+            f"Filled oracle matrix for {data_type}_{file_size} already exists! Skipping matrix filling."
+        )
+        with open(output_path, "rb") as f:
+            filled_oracle_matrix = pickle.load(f)
+    else:
+        print("Filling up rating matrix...")
+        filled_oracle_matrix = fill_out_matrix(df=base_file, model=trained_model)
+        print(f"Writing filled out matrix to {output_path}")
+        filled_oracle_matrix.to_pickle(output_path)
     print("Defining user timestamp behaviour from source file...")
-
-    avg_std_time_diff_per_user = get_timestamp_behavior(df=base_file)
-    avg_std_time_diff_per_user.to_csv(
-        f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}/avg_time_diff.csv", index=False
+    timestamp_output_path = (
+        f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}/avg_time_diff.csv"
     )
+    if os.path.exists(timestamp_output_path):
+        print(
+            f"Timestamp behavior for {data_type}_{file_size} already exists! Skipping timestamp behavior calculation."
+        )
+        avg_std_time_diff_per_user = pd.read_csv(timestamp_output_path)
+    else:
+        avg_std_time_diff_per_user = get_timestamp_behavior(df=base_file)
+        print(f"Writing timestamp behavior per user to {timestamp_output_path}")
+        avg_std_time_diff_per_user.to_csv(
+            f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}/avg_time_diff.csv",
+            index=False,
+        )
 
     print("All done!")
 
