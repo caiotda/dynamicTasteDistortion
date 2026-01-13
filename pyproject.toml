@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dynamicTasteDistortion"
+version = "0.1.0"
+description = "Simulation framework for modeling dynamic taste distortion in recommender systems"
+readme = "README.md"
+requires-python = ">=3.9"
+
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "scikit-learn",
+    "tqdm",
+]
+
+[project.scripts]
+bootstrap-preferences = "dynamicTasteDistortion.bootstrap_preferences:main"
+
+[tool.setuptools.packages.find]
+where = ["."]

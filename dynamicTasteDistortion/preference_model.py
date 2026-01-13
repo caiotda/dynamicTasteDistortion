@@ -9,11 +9,10 @@ from itertools import product
 from sklearn.metrics import f1_score
 from sklearn.model_selection import KFold, train_test_split
 from surprise import KNNBasic, NMF, Reader, SVDpp, Dataset as SurpriseDataset
-from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 
-from simulationConstants import (
+from dynamicTasteDistortion.simulationConstants import (
     USER_COL,
     MOVIELENS_PATH,
     STEAM_PATH,

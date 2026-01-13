@@ -5,18 +5,17 @@ import pandas as pd
 
 from calibratedRecs.metrics import mace
 from calibratedRecs.calibrationUtils import preprocess_genres
-from tasteDistortionOnDynamicRecs.simulation.simulationUtils import (
+from dynamicTasteDistortion.simulation.simulationUtils import (
     random_rec,
     get_feedback_for_predictions,
 )
-from tasteDistortionOnDynamicRecs.simulationConstants import (
+from dynamicTasteDistortion.simulationConstants import (
     USER_COL,
     ITEM_COL,
     GENRES_COL,
 )
-from tasteDistortionOnDynamicRecs.simulation.tensorUtils import get_matrix_coordinates
+from dynamicTasteDistortion.simulation.tensorUtils import get_matrix_coordinates
 
-from bprMf.utils import train
 
 from tqdm import tqdm
 
@@ -178,7 +177,8 @@ class Simulator:
             )
             if round_idx % L == 0:
                 print("retraining model...")
-                self.model, _ = train(self.model, boostrapped_df)
+                # TODO double check
+                _ = self.model.fit(boostrapped_df)
                 print("Calculating mace")
                 rec_df_grouped = (
                     boostrapped_df.groupby(USER_COL)

@@ -12,7 +12,7 @@ import json
 
 import math
 
-from simulationConstants import (
+from dynamicTasteDistortion.simulationConstants import (
     MOVIELENS_PATH,
     STEAM_PATH,
     YELP_PATH,
