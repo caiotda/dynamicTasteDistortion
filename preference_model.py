@@ -14,6 +14,7 @@ from tqdm import tqdm
 
 
 from simulationConstants import (
+    USER_COL,
     MOVIELENS_PATH,
     STEAM_PATH,
     YELP_PATH,
@@ -238,6 +239,41 @@ def fill_out_matrix(df, model):
     return df_filled
 
 
+def get_timestamp_behavior(df):
+    avg_std_time_diff_per_user = (
+        df.sort_values([USER_COL, "timestamp"])
+        .groupby(USER_COL)["timestamp"]
+        .agg(
+            median_timestamp_diff=lambda x: (
+                np.median(np.diff(x)) if len(x) > 1 else np.nan
+            ),
+            std_timestamp_diff=lambda x: np.diff(x).std() if len(x) > 1 else np.nan,
+            n_entries="count",
+        )
+        .reset_index()
+    )
+
+    positive_timestamp_diff = list(
+        avg_std_time_diff_per_user[
+            avg_std_time_diff_per_user["median_timestamp_diff"] > 0
+        ].userId
+    )
+
+    global_median_timestamp_diff = np.median(
+        np.diff(
+            df[df["userId"].isin(positive_timestamp_diff)].sort_values(
+                ["userId", "timestamp"]
+            )["timestamp"]
+        )
+    )
+
+    avg_std_time_diff_per_user["median_timestamp_diff"] = avg_std_time_diff_per_user[
+        "median_timestamp_diff"
+    ].replace(0, global_median_timestamp_diff)
+
+    return avg_std_time_diff_per_user
+
+
 def main():
     parser = argparse.ArgumentParser(description="Load and preprocess datasets.")
     parser.add_argument(
@@ -288,7 +324,16 @@ def main():
     print("Filling up rating matrix...")
     filled_oracle_matrix = fill_out_matrix(df=base_file, model=trained_model)
     print(f"Writing filled out matrix to {output_path}")
-    filled_oracle_matrix.to_pkl(output_path)
+    filled_oracle_matrix.to_pickle(output_path)
+
+    print("Defining user timestamp behaviour from source file...")
+
+    avg_std_time_diff_per_user = get_timestamp_behavior(df=base_file)
+    avg_std_time_diff_per_user.to_csv(
+        f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}/avg_time_diff.csv", index=False
+    )
+
+    print("All done!")
 
 
 if __name__ == "__main__":
