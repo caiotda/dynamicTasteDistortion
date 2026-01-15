@@ -4,6 +4,7 @@ from scipy.stats import expon
 import pandas as pd
 
 from dynamicTasteDistortion.simulationConstants import USER_COL, ITEM_COL
+from dynamicTasteDistortion.simulation.tensorUtils import pandas_df_to_sparse_tensor
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 seed = 42
@@ -31,13 +32,12 @@ def get_user_preferences(oracle_matrix):
     return matrix
 
 
-def map_prediction_to_preferences(oracle_tensor, prediction):
-    item_idx_tensor = prediction
+def map_prediction_to_preferences(oracle_tensor, prediction_tensor):
 
-    U = oracle_tensor.shape[0]
-    indices = torch.arange(U).unsqueeze(1).to(device)
-
-    return oracle_tensor[indices, item_idx_tensor].int()
+    indices = torch.arange(
+        prediction_tensor.size(0), device=prediction_tensor.device
+    ).unsqueeze(1)
+    return oracle_tensor[indices, prediction_tensor].int()
 
 
 def click_model(predictions):
@@ -65,7 +65,7 @@ def click_model(predictions):
 
 
 def get_feedback_for_predictions(oracle_matrix, predictions):
-    oracle_tensor = get_user_preferences(oracle_matrix)
+    oracle_tensor = pandas_df_to_sparse_tensor(oracle_matrix)
     preferences_matrix = map_prediction_to_preferences(oracle_tensor, predictions)
     examined_matrix = click_model(predictions)
 
