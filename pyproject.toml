@@ -19,6 +19,8 @@ dependencies = [
 
 [project.scripts]
 bootstrap-preferences = "dynamicTasteDistortion.bootstrap_preferences:main"
+preference-model = "dynamicTasteDistortion.preference_model:main"
+load-datasets = "dynamicTasteDistortion.dataset_loader:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
