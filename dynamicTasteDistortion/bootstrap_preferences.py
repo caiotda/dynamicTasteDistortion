@@ -1,5 +1,4 @@
 import argparse
-import ast
 import pickle
 import os
 
@@ -8,24 +7,13 @@ from scipy.stats import expon
 
 import numpy as np
 import pandas as pd
-from itertools import product
-from sklearn.metrics import f1_score
-from sklearn.model_selection import KFold, train_test_split
-from surprise import KNNBasic, NMF, Reader, SVDpp, Dataset as SurpriseDataset
-from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-
 
 from dynamicTasteDistortion.simulation.simulator import Simulator
 
 
 from dynamicTasteDistortion.simulationConstants import (
-    USER_COL,
-    MOVIELENS_PATH,
-    STEAM_PATH,
-    YELP_PATH,
     input_size_to_file_name,
-    RESULTS_PATH,
     MODEL_ARTIFACTS_PATH,
     SIMULATION_PATH,
 )
@@ -52,7 +40,7 @@ def main():
     preference_matrix_path = f"{SIMULATION_PATH}/{data_type}_{file_size}_oracle.pkl"
     if os.path.exists(preference_matrix_path):
         print("Reading filled preference matrix...")
-        oracle_matrix = pd.read_csv(preference_matrix_path)
+        oracle_df = pd.read_pickle(preference_matrix_path)
     else:
         print("Oracle matrix not found! Please run preference_model.py first.")
         return
@@ -72,3 +60,19 @@ def main():
             "Timestamp behaviour file not found! Please run preference_model.py first."
         )
         return
+    print(f"Bootstrapping clicks for {data_type}_{file_size}...")
+    sim = Simulator(
+        oracle_matrix=oracle_df,
+        model=None,
+        initial_date=0.0,
+        user_timestamp_distribution=userToExpDistribution,
+        bootstrapping_rounds=10,
+    )
+    print(f"Done! Saving bootstrapped clicks...")
+    bootstrapped_clicks_path = (
+        f"{SIMULATION_PATH}/{data_type}_{file_size}_bootstrapped.pkl"
+    )
+    click_matrix = sim.click_matrix
+    with open(bootstrapped_clicks_path, "wb") as f:
+        pickle.dump(click_matrix, f)
+    print(f"Bootstrapped clicks saved to {bootstrapped_clicks_path}.")
