@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 
 from calibratedRecs.metrics import mace
-from calibratedRecs.calibrationUtils import preprocess_genres
 from dynamicTasteDistortion.simulation.simulationUtils import (
     random_rec,
     get_feedback_for_predictions,
@@ -14,7 +13,10 @@ from dynamicTasteDistortion.simulationConstants import (
     ITEM_COL,
     GENRES_COL,
 )
-from dynamicTasteDistortion.simulation.tensorUtils import get_matrix_coordinates
+from dynamicTasteDistortion.simulation.tensorUtils import (
+    get_matrix_coordinates,
+    pandas_df_to_sparse_tensor,
+)
 
 
 from tqdm import tqdm
@@ -28,6 +30,7 @@ class Simulator:
         initial_date,
         user_timestamp_distribution,
         user_sample=None,
+        bootstrapping_rounds=10,
     ):
         self.timestamp_distribution = user_timestamp_distribution
         self.user_idx_to_id = {
@@ -39,9 +42,7 @@ class Simulator:
             users = list(self.user_idx_to_id.values())
         else:
             users = user_sample
-        self.oracle_matrix = preprocess_genres(
-            oracle_matrix[oracle_matrix[USER_COL].isin(users)]
-        )
+        self.oracle_matrix = oracle_matrix[oracle_matrix[USER_COL].isin(users)]
         self.model = model
         self.initial_date = initial_date
 
@@ -56,7 +57,9 @@ class Simulator:
             list(oracle_matrix[ITEM_COL].drop_duplicates()), device=self.device
         )
 
-        self.click_matrix = self.bootstrap_clicks()
+        self.click_matrix = self.bootstrap_clicks(
+            k=100, bootstrapping_rounds=bootstrapping_rounds
+        )
 
     def simulate_user_feedback(self, mask, k, feedback_from_bootstrap=False):
         """
@@ -76,7 +79,7 @@ class Simulator:
                 - timestamp: Interaction timestamps (NaN if no interaction occurred).
         """
         if feedback_from_bootstrap:
-            n_users = len(self.users)
+            n_users = self.users.max() + 1
             rec = random_rec(self.items, n_users, k)
         else:
             rec = self.model.predict(
@@ -84,7 +87,6 @@ class Simulator:
             )[0]
 
         feedback_matrix = get_feedback_for_predictions(self.oracle_matrix, rec)
-
         indices = get_matrix_coordinates(feedback_matrix)
 
         users_indices, click_positions = indices[:, 0].tolist(), indices[:, 1].tolist()
