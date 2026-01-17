@@ -21,6 +21,7 @@ dependencies = [
 bootstrap-preferences = "dynamicTasteDistortion.bootstrap_preferences:main"
 preference-model = "dynamicTasteDistortion.preference_model:main"
 load-datasets = "dynamicTasteDistortion.dataset_loader:main"
+simulate-recommendation = "dynamicTasteDistortion.simulation.simulator_client:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

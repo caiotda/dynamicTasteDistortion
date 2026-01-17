@@ -15,7 +15,6 @@ from dynamicTasteDistortion.simulationConstants import (
 )
 from dynamicTasteDistortion.simulation.tensorUtils import (
     get_matrix_coordinates,
-    pandas_df_to_sparse_tensor,
 )
 
 
@@ -31,6 +30,7 @@ class Simulator:
         user_timestamp_distribution,
         user_sample=None,
         bootstrapping_rounds=10,
+        bootstrapped_df=None,
     ):
         self.timestamp_distribution = user_timestamp_distribution
         self.user_idx_to_id = {
@@ -57,9 +57,12 @@ class Simulator:
             list(oracle_matrix[ITEM_COL].drop_duplicates()), device=self.device
         )
 
-        self.click_matrix = self.bootstrap_clicks(
-            k=100, bootstrapping_rounds=bootstrapping_rounds
-        )
+        if (bootstrapped_df is not None) and (not bootstrapped_df.empty):
+            self.click_matrix = bootstrapped_df
+        else:
+            self.click_matrix = self.bootstrap_clicks(
+                k=100, bootstrapping_rounds=bootstrapping_rounds
+            )
 
     def simulate_user_feedback(self, mask, k, feedback_from_bootstrap=False):
         """
