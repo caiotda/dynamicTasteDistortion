@@ -9,13 +9,7 @@ description = "Simulation framework for modeling dynamic taste distortion in rec
 readme = "README.md"
 requires-python = ">=3.9"
 
-dependencies = [
-    "numpy",
-    "pandas",
-    "scipy",
-    "scikit-learn",
-    "tqdm",
-]
+dependencies = ["numpy", "pandas", "scipy", "scikit-learn", "tqdm"]
 
 [project.scripts]
 bootstrap-preferences = "dynamicTasteDistortion.bootstrap_preferences:main"
