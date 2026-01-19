@@ -192,7 +192,7 @@ class Simulator:
                     .rename(columns={ITEM_COL: "rec"})
                 )
                 iteration_mace = mace(
-                    df=rec_df_grouped,
+                    rec_df=rec_df_grouped,
                     user2history=user2history,
                     recCol="rec",
                     item2genreMap=item2genreMap,

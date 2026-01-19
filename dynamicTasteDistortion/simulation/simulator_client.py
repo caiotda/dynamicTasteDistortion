@@ -84,3 +84,5 @@ def main():
         user_timestamp_distribution=userToExpDistribution,
         bootstrapped_df=bootstrapped_df,
     )
+
+    simulated_df, maces = sim.simulate(L=num_rounds_per_eval, rounds=rounds)
