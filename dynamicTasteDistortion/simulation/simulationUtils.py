@@ -103,19 +103,5 @@ def get_candidate_items(D):
     return mask_from_df
 
 
-def setup_user_timestamp_distribution():
-
-    user_to_time_delta = pd.read_csv(
-        "../data/movielens-1m/median_time_diff_per_user.csv"
-    ).set_index("userId")
-
-    user_to_exp_distribution = {
-        user: expon(scale=row["median_timestamp_diff"])
-        for user, row in user_to_time_delta.iterrows()
-    }
-
-    return user_to_exp_distribution
-
-
 def random_rec(candidates, n_users, k):
     return torch.randint(size=(n_users, k), low=0, high=len(candidates), device=device)
