@@ -22,7 +22,7 @@ def load_oracle_matrix(data_type, size):
 
 
 def load_bootstrapped_clicks(data_type, size):
-    output_path = f"{SIMULATION_PATH}/{data_type}_{size}__bootstrapped.pkl"
+    output_path = f"{SIMULATION_PATH}/{data_type}_{size}_bootstrapped.pkl"
     with open(output_path, "rb") as f:
         bootstrapped_clicks = pickle.load(f)
     return bootstrapped_clicks
