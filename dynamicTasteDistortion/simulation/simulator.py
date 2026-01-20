@@ -3,6 +3,10 @@ import torch
 import numpy as np
 import pandas as pd
 
+from calibratedRecs.calibratedRecs.calibrationUtils import (
+    build_item_genre_distribution_tensor,
+    preprocess_dataframe_for_calibration,
+)
 from calibratedRecs.metrics import mace
 from dynamicTasteDistortion.simulation.simulationUtils import (
     random_rec,
@@ -63,6 +67,19 @@ class Simulator:
             self.click_matrix = self.bootstrap_clicks(
                 k=100, bootstrapping_rounds=bootstrapping_rounds
             )
+
+        self.item2genreMap = (
+            self.oracle_matrix[[ITEM_COL, GENRES_COL]]
+            .set_index(ITEM_COL)[GENRES_COL]
+            .to_dict()
+        )
+
+        ratings_df = preprocess_dataframe_for_calibration(self.oracle_matrix)
+        n_items = ratings_df[ITEM_COL].max() + 1
+        n_users = self.ratings_df[USER_COL].max() + 1
+        self.item_distribution_tensor = build_item_genre_distribution_tensor(
+            ratings_df, n_items
+        )
 
     def simulate_user_feedback(self, mask, k, feedback_from_bootstrap=False):
         """
