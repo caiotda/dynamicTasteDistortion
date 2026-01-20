@@ -12,7 +12,7 @@ import json
 
 import math
 
-from simulationConstants import (
+from dynamicTasteDistortion.simulationConstants import (
     MOVIELENS_PATH,
     STEAM_PATH,
     YELP_PATH,
@@ -20,13 +20,9 @@ from simulationConstants import (
     ITEM_COL,
     GENRES_COL,
     RATING_COL,
+    input_size_to_file_name,
 )
 
-input_size_to_file_name = {
-    "s": "1m",
-    "m": "10m",
-    "l": "20m",
-}
 input_size_to_sample_size = {
     "s": 1_000_000,
     "m": 10_000_000,
