@@ -1,6 +1,7 @@
 import argparse
 import torch
 import pickle
+from pathlib import Path
 
 from dynamicTasteDistortion.simulationConstants import (
     ITEM_COL,
@@ -45,6 +46,12 @@ def main():
     )
 
     parser.add_argument(
+        "--num_users",
+        required=True,
+        help="Number of users used in the simulation.",
+    )
+
+    parser.add_argument(
         "--num_rounds_per_eval",
         required=True,
         help="Number of rounds before triggering retraining and MACE measuring",
@@ -56,6 +63,7 @@ def main():
     file_size = input_size_to_file_name[size]
     rounds = int(args.rounds)
     num_rounds_per_eval = int(args.num_rounds_per_eval)
+    num_users = int(args.num_users)
 
     timestamp_distribution = load_time_diff_df(data_type, file_size)
     oracle_matrix = load_oracle_matrix(data_type, file_size)
@@ -63,6 +71,14 @@ def main():
 
     n_users = oracle_matrix[USER_COL].max() + 1
     n_items = oracle_matrix[ITEM_COL].max() + 1
+
+    if num_users is not None:
+        candidates = timestamp_distribution.index.tolist()
+        idx = torch.randperm(len(candidates))[:num_users]
+        users = [candidates[i] for i in idx.tolist()]
+        timestamp_distribution = timestamp_distribution.iloc[users]
+        oracle_matrix = oracle_matrix[oracle_matrix[USER_COL].isin(users)]
+        bootstrapped_df = bootstrapped_df[bootstrapped_df[USER_COL].isin(users)]
 
     model = bprMFWithClickDebiasing(
         num_users=n_users,
@@ -78,7 +94,14 @@ def main():
         user: expon(scale=row["median_timestamp_diff"])
         for user, row in timestamp_distribution.iterrows()
     }
-    base_artifacts_path = f"{RESULTS_PATH}/{data_type}_{file_size}/simulated"
+    base_artifacts_path = (
+        Path(RESULTS_PATH)
+        / f"{data_type}_{file_size}"
+        / "simulated"
+        / f"rounds={rounds}"
+        / f"users={num_users}"
+        / f"eval_every={num_rounds_per_eval}"
+    )
 
     sim = Simulator(
         oracle_matrix=oracle_matrix,
@@ -91,10 +114,10 @@ def main():
     simulated_df, maces, kl_divs = sim.simulate(L=num_rounds_per_eval, rounds=rounds)
 
     print(f"Done! Saving simulated interactions...")
-    simulated_df.to_pickle(
-        f"{base_artifacts_path}/simulated_interactions_{rounds}_rounds_full.pkl"
-    )
-    with open(f"{base_artifacts_path}/maces_{rounds}_rounds_full.pkl", "wb") as f:
+    simulated_df.to_pickle(base_artifacts_path / "simulated_interactions.pkl")
+
+    with open(base_artifacts_path / "maces.pkl", "wb") as f:
         pickle.dump(maces, f)
-    with open(f"{base_artifacts_path}/kl_divs_{rounds}_rounds_full.pkl", "wb") as f:
+
+    with open(base_artifacts_path / "kl_divs.pkl", "wb") as f:
         pickle.dump(kl_divs, f)
