@@ -104,4 +104,6 @@ def get_candidate_items(D):
 
 
 def random_rec(candidates, n_users, k):
-    return torch.randint(size=(n_users, k), low=0, high=len(candidates), device=device)
+    ids = torch.randint(size=(n_users, k), low=0, high=len(candidates), device=device)
+    scores = torch.rand(size=(n_users, k), device=device)
+    return ids, scores
