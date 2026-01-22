@@ -1,18 +1,22 @@
 import torch
+import os
 
 import numpy as np
 import pandas as pd
 
-from calibratedRecs.calibratedRecs.calibrationUtils import (
+
+from calibratedRecs.calibrationUtils import (
     build_item_genre_distribution_tensor,
     preprocess_dataframe_for_calibration,
+    build_user_genre_history_distribution,
 )
-from calibratedRecs.metrics import mace
+from calibratedRecs.metrics import mace, get_avg_kl_div
 from dynamicTasteDistortion.simulation.simulationUtils import (
     random_rec,
     get_feedback_for_predictions,
 )
 from dynamicTasteDistortion.simulationConstants import (
+    RESULTS_PATH,
     USER_COL,
     ITEM_COL,
     GENRES_COL,
@@ -32,6 +36,7 @@ class Simulator:
         model,
         initial_date,
         user_timestamp_distribution,
+        base_artifacts_path,
         user_sample=None,
         bootstrapping_rounds=10,
         bootstrapped_df=None,
@@ -50,15 +55,13 @@ class Simulator:
         self.model = model
         self.initial_date = initial_date
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
         if self.initial_date is None:
             self.initial_date = pd.Timestamp.now().timestamp()
 
-        self.users = torch.tensor(users, device=self.device)
+        self.users = torch.tensor(users, device=model.device)
 
         self.items = torch.tensor(
-            list(oracle_matrix[ITEM_COL].drop_duplicates()), device=self.device
+            list(oracle_matrix[ITEM_COL].drop_duplicates()), device=model.device
         )
 
         if (bootstrapped_df is not None) and (not bootstrapped_df.empty):
@@ -75,11 +78,13 @@ class Simulator:
         )
 
         ratings_df = preprocess_dataframe_for_calibration(self.oracle_matrix)
-        n_items = ratings_df[ITEM_COL].max() + 1
-        n_users = self.ratings_df[USER_COL].max() + 1
-        self.item_distribution_tensor = build_item_genre_distribution_tensor(
-            ratings_df, n_items
-        )
+        self.n_items = ratings_df[ITEM_COL].max() + 1
+        self.n_users = ratings_df[USER_COL].max() + 1
+        self.p_g_i = build_item_genre_distribution_tensor(ratings_df, self.n_items)
+
+        self.base_artifacts_path = base_artifacts_path
+        if not os.path.exists(self.base_artifacts_path):
+            os.makedirs(self.base_artifacts_path)
 
     def simulate_user_feedback(self, mask, k, feedback_from_bootstrap=False):
         """
@@ -100,11 +105,11 @@ class Simulator:
         """
         if feedback_from_bootstrap:
             n_users = self.users.max() + 1
-            rec = random_rec(self.items, n_users, k)
+            rec, score = random_rec(self.items, n_users, k)
         else:
-            rec = self.model.predict(
-                user=self.users, k=k, candidates=self.items, mask=mask
-            )[0]
+            rec, score = self.model.recommend(
+                users=self.users, k=k, candidates=self.items, mask=mask
+            )
 
         feedback_matrix = get_feedback_for_predictions(self.oracle_matrix, rec)
         indices = get_matrix_coordinates(feedback_matrix)
@@ -114,22 +119,41 @@ class Simulator:
 
         feedbacks = feedback_matrix.flatten().tolist()
         items = rec.flatten().tolist()
+        scores = score.flatten().tolist()
+        constant = [1.0] * len(scores)
 
         timestamps = [
             (self.timestamp_distribution[user].rvs(1)[0] / 60) + self.initial_date
             for user in user_ids
         ]
         entries = list(
-            zip(users_indices, items, feedbacks, click_positions, timestamps)
+            zip(
+                users_indices,
+                items,
+                feedbacks,
+                click_positions,
+                timestamps,
+                scores,
+                constant,
+            )
         )
         interaction_df = pd.DataFrame(
-            entries, columns=["user", "item", "relevant", "clicked_at", "timestamp"]
+            entries,
+            columns=[
+                "user",
+                "item",
+                "relevant",
+                "clicked_at",
+                "timestamp",
+                "rating",
+                "constant",
+            ],
         )
 
         interaction_df.loc[interaction_df["relevant"] != 1.0, "clicked_at"] = np.nan
         interaction_df.loc[interaction_df["relevant"] != 1.0, "timestamp"] = np.nan
-
-        return interaction_df
+        interaction_df["constant"] = 1.0  # For calibration purposes
+        return interaction_df, rec
 
     def bootstrap_clicks(self, k=20, bootstrapping_rounds=5):
         """
@@ -145,10 +169,19 @@ class Simulator:
         """
 
         bootstrapped_df = pd.DataFrame(
-            [], columns=["user", "item", "relevant", "clicked_at", "timestamp"]
+            [],
+            columns=[
+                "user",
+                "item",
+                "relevant",
+                "clicked_at",
+                "timestamp",
+                "rating",
+                "constant",
+            ],
         )
         for _ in range(bootstrapping_rounds):
-            round_df = self.simulate_user_feedback(
+            round_df, _ = self.simulate_user_feedback(
                 mask=None, feedback_from_bootstrap=True, k=k
             )
             bootstrapped_df = pd.concat([bootstrapped_df, round_df], ignore_index=True)
@@ -180,45 +213,48 @@ class Simulator:
             List of MACE metric values computed every L rounds to evaluate recommendation quality.
         """
 
-        item2genreMap = (
-            self.oracle_matrix[[ITEM_COL, GENRES_COL]]
-            .set_index(ITEM_COL)[GENRES_COL]
-            .to_dict()
-        )
-        user2history = (
-            self.click_matrix.groupby(USER_COL)
-            .agg({ITEM_COL: list})
-            .to_dict()[ITEM_COL]
-        )
-
         boostrapped_df = self.click_matrix.copy()
+        boostrapped_df["constant"] = 1.0
         maces = []
-        for round_idx in tqdm(range(rounds), desc="Processing rounds..."):
-            round_df = self.simulate_user_feedback(
-                mask=None, feedback_from_bootstrap=True, k=k
+        kl_divs = []
+        for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
+            round_df, round_rec = self.simulate_user_feedback(
+                mask=None, feedback_from_bootstrap=False, k=k
             )
             if round_idx % L == 0:
                 print("retraining model...")
-                # TODO double check
                 _ = self.model.fit(boostrapped_df)
                 print("Calculating mace")
-                rec_df_grouped = (
-                    boostrapped_df.groupby(USER_COL)
-                    .agg({ITEM_COL: list})
-                    .reset_index()
-                    .rename(columns={ITEM_COL: "rec"})
+                user_history_tensor = build_user_genre_history_distribution(
+                    boostrapped_df,
+                    self.p_g_i,
+                    n_users=self.n_users,
+                    n_items=self.n_items,
+                    weight_col="constant",
                 )
+
+                rec_tensor = build_user_genre_history_distribution(
+                    round_df,
+                    self.p_g_i,
+                    n_users=self.n_users,
+                    n_items=self.n_items,
+                    weight_col="rating",  # Prediction
+                )
+
                 iteration_mace = mace(
-                    rec_df=rec_df_grouped,
-                    user2history=user2history,
-                    recCol="rec",
-                    item2genreMap=item2genreMap,
+                    rec_df=round_df.groupby(USER_COL).agg(list).reset_index(),
+                    p_g_u=user_history_tensor,
+                    p_g_i=self.p_g_i,
                 )
+                iteration_avg_kl_div = get_avg_kl_div(
+                    self.users, user_history_tensor, rec_tensor
+                )
+                kl_divs.append(iteration_avg_kl_div)
                 maces.append(iteration_mace)
             if round_idx % 100 == 0:
                 boostrapped_df.to_csv(
-                    f"data/movielens/no_calibration_sim_up_to_round_{round_idx}"
+                    f"{self.base_artifacts_path}/simulated_recommendation_round_{round_idx}.csv"
                 )
             boostrapped_df = pd.concat([boostrapped_df, round_df], ignore_index=True)
 
-        return boostrapped_df, maces
+        return boostrapped_df, maces, kl_divs

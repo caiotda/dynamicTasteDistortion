@@ -1,10 +1,12 @@
 import argparse
 import torch
+import pickle
 
 from dynamicTasteDistortion.simulationConstants import (
     ITEM_COL,
     USER_COL,
     input_size_to_file_name,
+    RESULTS_PATH,
 )
 from dynamicTasteDistortion.simulation.simulator import Simulator
 
@@ -76,6 +78,7 @@ def main():
         user: expon(scale=row["median_timestamp_diff"])
         for user, row in timestamp_distribution.iterrows()
     }
+    base_artifacts_path = f"{RESULTS_PATH}/{data_type}_{file_size}/simulated"
 
     sim = Simulator(
         oracle_matrix=oracle_matrix,
@@ -83,6 +86,15 @@ def main():
         initial_date=0.0,
         user_timestamp_distribution=userToExpDistribution,
         bootstrapped_df=bootstrapped_df,
+        base_artifacts_path=base_artifacts_path,
     )
+    simulated_df, maces, kl_divs = sim.simulate(L=num_rounds_per_eval, rounds=rounds)
 
-    simulated_df, maces = sim.simulate(L=num_rounds_per_eval, rounds=rounds)
+    print(f"Done! Saving simulated interactions...")
+    simulated_df.to_pickle(
+        f"{base_artifacts_path}/simulated_interactions_{rounds}_rounds_full.pkl"
+    )
+    with open(f"{base_artifacts_path}/maces_{rounds}_rounds_full.pkl", "wb") as f:
+        pickle.dump(maces, f)
+    with open(f"{base_artifacts_path}/kl_divs_{rounds}_rounds_full.pkl", "wb") as f:
+        pickle.dump(kl_divs, f)
