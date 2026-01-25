@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 
+from calibratedRecs.calibration import Calibration
 from calibratedRecs.calibrationUtils import (
     build_item_genre_distribution_tensor,
     preprocess_dataframe_for_calibration,
@@ -14,6 +15,7 @@ from calibratedRecs.metrics import mace, get_avg_kl_div
 from dynamicTasteDistortion.simulation.simulationUtils import (
     random_rec,
     get_feedback_for_predictions,
+    rerank_with_calib,
 )
 from dynamicTasteDistortion.simulationConstants import (
     RESULTS_PATH,
@@ -40,7 +42,10 @@ class Simulator:
         user_sample=None,
         bootstrapping_rounds=10,
         bootstrapped_df=None,
+        should_calibrate=False,
     ):
+
+        self.should_calibrate = should_calibrate
         self.timestamp_distribution = user_timestamp_distribution
         self.user_idx_to_id = {
             idx: user_id
@@ -77,6 +82,10 @@ class Simulator:
             .to_dict()
         )
 
+        self.click_matrix[GENRES_COL] = self.click_matrix[ITEM_COL].map(
+            self.item2genreMap
+        )
+
         ratings_df = preprocess_dataframe_for_calibration(self.oracle_matrix)
         self.n_items = ratings_df[ITEM_COL].max() + 1
         self.n_users = ratings_df[USER_COL].max() + 1
@@ -110,6 +119,20 @@ class Simulator:
             rec, score = self.model.recommend(
                 users=self.users, k=k, candidates=self.items, mask=mask
             )
+
+            if self.should_calibrate:
+                calibration_params = {
+                    "weight": "linear_time",
+                    "distribution_mode": "steck",
+                    "lambda": 0.99,
+                }
+                rec, score = rerank_with_calib(
+                    click_df=self.click_matrix,
+                    users=self.users,
+                    rec=rec,
+                    scores=score,
+                    calibration_params=calibration_params,
+                )
 
         feedback_matrix = get_feedback_for_predictions(self.oracle_matrix, rec)
         indices = get_matrix_coordinates(feedback_matrix)

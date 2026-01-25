@@ -57,6 +57,12 @@ def main():
         help="Number of rounds before triggering retraining and MACE measuring",
     )
 
+    parser.add_argument(
+        "--should_calibrate",
+        required=False,
+        help="Whether to apply calibration during simulation.",
+    )
+
     args = parser.parse_args()
     data_type = args.data
     size = args.size
@@ -64,6 +70,7 @@ def main():
     rounds = int(args.rounds)
     num_rounds_per_eval = int(args.num_rounds_per_eval)
     num_users = int(args.num_users)
+    should_calibrate = args.should_calibrate
 
     timestamp_distribution = load_time_diff_df(data_type, file_size)
     oracle_matrix = load_oracle_matrix(data_type, file_size)
@@ -110,6 +117,7 @@ def main():
         user_timestamp_distribution=userToExpDistribution,
         bootstrapped_df=bootstrapped_df,
         base_artifacts_path=base_artifacts_path,
+        should_calibrate=should_calibrate,
     )
     simulated_df, maces, kl_divs = sim.simulate(L=num_rounds_per_eval, rounds=rounds)
 
