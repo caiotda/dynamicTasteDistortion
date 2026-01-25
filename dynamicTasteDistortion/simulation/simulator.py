@@ -122,7 +122,7 @@ class Simulator:
 
             if self.should_calibrate:
                 calibration_params = {
-                    "weight": "linear_time",
+                    "weight": "constant",
                     "distribution_mode": "steck",
                     "lambda": 0.99,
                 }

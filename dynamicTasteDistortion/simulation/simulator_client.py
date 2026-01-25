@@ -70,8 +70,7 @@ def main():
     rounds = int(args.rounds)
     num_rounds_per_eval = int(args.num_rounds_per_eval)
     num_users = int(args.num_users)
-    should_calibrate = args.should_calibrate
-
+    should_calibrate = args.should_calibrate in ["True", "true", "1", "yes", "Yes"]
     timestamp_distribution = load_time_diff_df(data_type, file_size)
     oracle_matrix = load_oracle_matrix(data_type, file_size)
     bootstrapped_df = load_bootstrapped_clicks(data_type, file_size)

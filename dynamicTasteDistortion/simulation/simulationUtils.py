@@ -19,22 +19,23 @@ def rerank_with_calib(click_df, users, rec, scores, calibration_params):
     weight = calibration_params.get("weight", "linear_time")
     distribution_mode = calibration_params.get("distribution_mode", "steck")
     _lambda = calibration_params.get("lambda", 0.99)
+    device = users.device
     rec_df = pd.DataFrame(
         zip(users.tolist(), rec.tolist(), scores.tolist()),
         columns=[USER_COL, "top_k_rec_id", "top_k_rec_score"],
     ).explode(["top_k_rec_id", "top_k_rec_score"])
     history = click_df[click_df["clicked_at"] != -1.0]
     calibrator = Calibration(
-        df=history,
-        rec_df=rec_df,
+        ratings_df=history,
+        recommendation_df=rec_df,
         weight=weight,
         distribution_mode=distribution_mode,
         _lambda=_lambda,
     )
     calibrator.calibrate_for_users()
     reranked_df = calibrator.calibration_df
-    rec = torch.tensor(reranked_df[ITEM_COL].values).to(self.model.device)
-    score = torch.tensor(reranked_df["rating"].values).to(self.model.device)
+    rec = torch.tensor(reranked_df[ITEM_COL].values).to(device)
+    score = torch.tensor(reranked_df["rating"].values).to(device)
 
     return rec, score
 
