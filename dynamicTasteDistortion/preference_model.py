@@ -34,7 +34,6 @@ class ModelChooser:
         self.models = {
             "SVD++": SVDpp,
             "NMF": NMF,
-            "knn": KNNBasic,
         }
 
         self.param_grid_svd = {
@@ -50,24 +49,9 @@ class ModelChooser:
             "reg_qi": [0.06, 0.1],
         }
 
-        sim_functions = ["cosine", "pearson"]
-        user_based = [True, False]
-
-        sim_options_combinations = [
-            {"name": sim, "user_based": ub}
-            for sim in sim_functions
-            for ub in user_based
-        ]
-
-        self.param_grid_knn = {
-            "k": [20, 40, 60],
-            "sim_options": sim_options_combinations,
-        }
-
         self.model_name_to_params = {
             "SVD++": self.param_grid_svd,
             "NMF": self.param_grid_nmf,
-            "knn": self.param_grid_knn,
         }
 
         self.model = self.models[self.name]
@@ -102,7 +86,7 @@ def choose_best_model(df, data_type):
     kf = KFold(n_splits=5, shuffle=True, random_state=42)
     f1_results = {}
 
-    model_names = ["SVD++", "NMF", "knn"]
+    model_names = ["SVD++", "NMF"]
     reader = Reader(rating_scale=(1, 5))
 
     usuarios = df["user"].unique()
@@ -201,7 +185,6 @@ def fill_out_matrix(df, model):
 
     user_ids = [trainset.to_raw_uid(u) for u in all_users]
     item_ids = [trainset.to_raw_iid(i) for i in all_items]
-
     predictions = []
     for user_id in tqdm(user_ids, desc="Predicting missing ratings"):
         surprise_internal_user_id = trainset.to_inner_uid(user_id)
@@ -213,7 +196,6 @@ def fill_out_matrix(df, model):
         )
         for item_id in item_ids:
             if item_id not in rated_item_ids:
-                # predict the rating
                 pred = model.predict(user_id, item_id)
                 predictions.append([user_id, item_id, pred])
 
@@ -226,7 +208,6 @@ def fill_out_matrix(df, model):
         processed_predictions, columns=["user", "item", "rating"]
     )
 
-    # Aqui vai dar problema. Genres não é hashable por ser lista.
     genres_df = df[["item", "genres"]].drop_duplicates(subset="item")
     predictions_df = predictions_df.merge(genres_df, on="item")
     base_df = df[["user", "item", "genres", "rating"]]
