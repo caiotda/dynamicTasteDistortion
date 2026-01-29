@@ -14,7 +14,10 @@ seed = 42
 torch.manual_seed(seed)
 
 
-def rerank_with_calib(click_df, users, rec, scores, calibration_params):
+#  TODO: refactor as a method in Calibration class
+def rerank_with_calib(
+    click_df, n_users, n_items, users, rec, scores, calibration_params
+):
 
     weight = calibration_params.get("weight", "linear_time")
     distribution_mode = calibration_params.get("distribution_mode", "steck")
@@ -31,11 +34,19 @@ def rerank_with_calib(click_df, users, rec, scores, calibration_params):
         weight=weight,
         distribution_mode=distribution_mode,
         _lambda=_lambda,
+        n_users=n_users,
+        n_items=n_items,
     )
     calibrator.calibrate_for_users()
     reranked_df = calibrator.calibration_df
-    rec = torch.tensor(reranked_df[ITEM_COL].values).to(device)
-    score = torch.tensor(reranked_df["rating"].values).to(device)
+    reranked_df[ITEM_COL] = reranked_df[ITEM_COL].astype(int)
+    reranked_df["rating"] = reranked_df["rating"].astype(float)
+    reranked_df = reranked_df.groupby(USER_COL).agg({ITEM_COL: list, "rating": list})
+    # Convert item and score numpy arrays to float type to avoid issues with torch tensor conversion
+    items = reranked_df[ITEM_COL].tolist()
+    scores = reranked_df["rating"].tolist()
+    rec = torch.tensor(items).to(device)
+    score = torch.tensor(scores).to(device)
 
     return rec, score
 

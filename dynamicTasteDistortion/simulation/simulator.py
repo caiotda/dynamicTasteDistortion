@@ -132,8 +132,9 @@ class Simulator:
                     rec=rec,
                     scores=score,
                     calibration_params=calibration_params,
+                    n_users=self.n_users,
+                    n_items=self.n_items,
                 )
-
         feedback_matrix = get_feedback_for_predictions(self.oracle_matrix, rec)
         indices = get_matrix_coordinates(feedback_matrix)
 
@@ -272,11 +273,19 @@ class Simulator:
                 iteration_avg_kl_div = get_avg_kl_div(
                     self.users, user_history_tensor, rec_tensor
                 )
+                print(
+                    f"Round {round_idx}: MACE={iteration_mace}, Avg KL Div={iteration_avg_kl_div}"
+                )
                 kl_divs.append(iteration_avg_kl_div)
                 maces.append(iteration_mace)
             if round_idx % 100 == 0:
+                preffix = (
+                    "calibrated_steck_linear"
+                    if self.should_calibrate
+                    else "uncalibrated"
+                )
                 boostrapped_df.to_csv(
-                    f"{self.base_artifacts_path}/simulated_recommendation_round_{round_idx}.csv"
+                    f"{self.base_artifacts_path}/simulated_{preffix}_recommendation_round_{round_idx}.csv"
                 )
             boostrapped_df = pd.concat([boostrapped_df, round_df], ignore_index=True)
 
