@@ -304,6 +304,9 @@ def process_yelp_df(df):
     processed_df["binarized_rating"] = processed_df[RATING_COL].apply(
         lambda rating: int(rating >= 4)
     )
+    processed_df["timestamp"] = (
+        pd.to_datetime(processed_df["date"]).astype("int64") // 10**9
+    )
     return processed_df
 
 
