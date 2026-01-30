@@ -10,6 +10,7 @@ from sklearn.metrics import f1_score
 from sklearn.model_selection import KFold, train_test_split
 from surprise import KNNBasic, NMF, Reader, SVDpp, Dataset as SurpriseDataset
 from tqdm import tqdm
+import torch
 
 
 from dynamicTasteDistortion.simulationConstants import (
@@ -174,8 +175,9 @@ def fit_evaluate(model, full_df, test_size=0.3):
     return fit_model, test_set_f1_score
 
 
-def fill_out_matrix(df, model):
+def fill_out_matrix(base_df, model, user_sample):
     reader = Reader(rating_scale=(1, 5))
+    df = base_df[base_df[USER_COL].isin(user_sample)]
     trainset = SurpriseDataset.load_from_df(
         df[["user", "item", "rating"]], reader
     ).build_full_trainset()
@@ -219,7 +221,8 @@ def fill_out_matrix(df, model):
     return df_filled
 
 
-def get_timestamp_behavior(df):
+def get_timestamp_behavior(base_df, sample):
+    df = base_df[base_df[USER_COL].isin(sample)]
     avg_std_time_diff_per_user = (
         df.sort_values([USER_COL, "timestamp"])
         .groupby(USER_COL)["timestamp"]
@@ -263,6 +266,12 @@ def main():
         help="Dataset size: s (1m), m (10m), l (20m).",
     )
     parser.add_argument(
+        "--num_users",
+        required=True,
+        help="Number of users used to bootstrap clicks.",
+    )
+
+    parser.add_argument(
         "--data",
         choices=["ml", "yelp", "steam"],
         required=True,
@@ -270,20 +279,44 @@ def main():
     )
     args = parser.parse_args()
     data_type = args.data
-    print("Loading base dataset...")
+    num_users = int(args.num_users)
+
     file_base_path = DATA_TO_PATH[data_type]
     file_size = input_size_to_file_name[args.size]
     file_path = f"{file_base_path}/{data_type}_{file_size}.pkl"
+    print(f"Loading base dataset from {file_path}...")
     base_file = pd.read_pickle(file_path)
     print("Done!")
-    params_path = (
+
+    # Define I/O paths
+    users_path = (
+        f"{SIMULATION_PATH}/{data_type}_{file_size}_{num_users}_sampled_users.pkl"
+    )
+
+    oracle_model_params_path = (
         f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}/oracle_model_params.pkl"
     )
-    if os.path.exists(params_path):
+
+    oracle_output_path = (
+        f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_oracle.pkl"
+    )
+    timestamp_output_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}_n_users={num_users}/avg_time_diff.csv"
+
+    candidates = base_file[USER_COL].unique().tolist()
+    if num_users is not None:
+        idx = torch.randperm(len(candidates))[:num_users]
+        users = [candidates[i] for i in idx.tolist()]
+        print(f"Persisting sampled users to {users_path} for simulation consistency...")
+        with open(users_path, "wb") as f:
+            pickle.dump(users, f)
+    else:
+        users = candidates
+
+    if os.path.exists(oracle_model_params_path):
         print(
             f"Oracle model trained on {data_type}_{file_size} found!Skipping model selection"
         )
-        with open(params_path, "rb") as f:
+        with open(oracle_model_params_path, "rb") as f:
             oracle_model_artifact = pickle.load(f)
 
         model_class = oracle_model_artifact["model_class"]
@@ -300,29 +333,30 @@ def main():
     print(
         f"Model selection finished! model achieved f1 score of {f1_score_test:.2f} on test_set"
     )
-    output_path = f"{SIMULATION_PATH}/{data_type}_{file_size}_oracle.pkl"
-    if os.path.exists(output_path):
+    if os.path.exists(oracle_output_path):
         print(
-            f"Filled oracle matrix for {data_type}_{file_size} already exists! Skipping matrix filling."
+            f"Filled oracle matrix for {data_type}_{file_size} that uses {num_users} users already exists! Skipping matrix filling."
         )
-        with open(output_path, "rb") as f:
+        print(f"Reading filled oracle matrix from {oracle_output_path}...")
+        with open(oracle_output_path, "rb") as f:
             filled_oracle_matrix = pickle.load(f)
     else:
         print("Filling up rating matrix...")
-        filled_oracle_matrix = fill_out_matrix(df=base_file, model=trained_model)
-        print(f"Writing filled out matrix to {output_path}")
-        filled_oracle_matrix.to_pickle(output_path)
+        filled_oracle_matrix = fill_out_matrix(
+            base_df=base_file, model=trained_model, user_sample=users
+        )
+        print(f"Writing filled out matrix to {oracle_output_path}")
+        filled_oracle_matrix.to_pickle(oracle_output_path)
     print("Defining user timestamp behaviour from source file...")
-    timestamp_output_path = (
-        f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}/avg_time_diff.csv"
-    )
     if os.path.exists(timestamp_output_path):
         print(
-            f"Timestamp behavior for {data_type}_{file_size} already exists! Skipping timestamp behavior calculation."
+            f"Timestamp behavior for {data_type}_{file_size} that uses {num_users} users already exists! Skipping timestamp behavior calculation."
         )
         avg_std_time_diff_per_user = pd.read_csv(timestamp_output_path)
     else:
-        avg_std_time_diff_per_user = get_timestamp_behavior(df=base_file)
+        avg_std_time_diff_per_user = get_timestamp_behavior(
+            base_df=base_file, sample=users
+        )
         print(f"Writing timestamp behavior per user to {timestamp_output_path}")
         avg_std_time_diff_per_user.to_csv(
             f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}/avg_time_diff.csv",
