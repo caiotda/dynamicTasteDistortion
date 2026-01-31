@@ -359,7 +359,7 @@ def main():
         )
         print(f"Writing timestamp behavior per user to {timestamp_output_path}")
         avg_std_time_diff_per_user.to_csv(
-            f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}/avg_time_diff.csv",
+            timestamp_output_path,
             index=False,
         )
 
