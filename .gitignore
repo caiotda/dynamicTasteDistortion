@@ -4,3 +4,4 @@ __pycache__/
 .dynamicTaste/
 *.egg-info/
 dynamicTasteDistortion/artifacts/
+sandbox*
