@@ -300,7 +300,8 @@ def main():
     oracle_output_path = (
         f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_oracle.pkl"
     )
-    timestamp_output_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}_n_users={num_users}/avg_time_diff.csv"
+
+    timestamp_output_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}_n_users={num_users}_avg_time_diff.csv"
 
     candidates = base_file[USER_COL].unique().tolist()
     if num_users is not None:

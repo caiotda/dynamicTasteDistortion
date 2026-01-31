@@ -36,11 +36,17 @@ class Simulator:
         model,
         initial_date,
         user_timestamp_distribution,
-        base_artifacts_path,
+        base_artifacts_path=None,
         user_sample=None,
         bootstrapping_rounds=10,
         bootstrapped_df=None,
     ):
+
+        device = (
+            model.device
+            if model is not None
+            else "gpu" if torch.cuda.is_available() else "cpu"
+        )
         self.timestamp_distribution = user_timestamp_distribution
         self.user_idx_to_id = {
             idx: user_id
@@ -58,10 +64,10 @@ class Simulator:
         if self.initial_date is None:
             self.initial_date = pd.Timestamp.now().timestamp()
 
-        self.users = torch.tensor(users, device=model.device)
+        self.users = torch.tensor(users, device=device)
 
         self.items = torch.tensor(
-            list(oracle_matrix[ITEM_COL].drop_duplicates()), device=model.device
+            list(oracle_matrix[ITEM_COL].drop_duplicates()), device=device
         )
 
         if (bootstrapped_df is not None) and (not bootstrapped_df.empty):
@@ -83,7 +89,9 @@ class Simulator:
         self.p_g_i = build_item_genre_distribution_tensor(ratings_df, self.n_items)
 
         self.base_artifacts_path = base_artifacts_path
-        if not os.path.exists(self.base_artifacts_path):
+        if base_artifacts_path is not None and not os.path.exists(
+            self.base_artifacts_path
+        ):
             os.makedirs(self.base_artifacts_path)
 
     def simulate_user_feedback(self, mask, k, feedback_from_bootstrap=False):
