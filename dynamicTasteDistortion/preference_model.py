@@ -371,8 +371,6 @@ def main():
         )
         avg_std_time_diff_per_user = pd.read_csv(timestamp_output_path)
     else:
-        # TODO: aqui que quebra
-        print(f"Df a partir do qual vou gerar o timestamp: {df}")
         avg_std_time_diff_per_user = get_timestamp_behavior(base_df=df, sample=users)
         # Break if timestamp df is empty
 
