@@ -251,9 +251,21 @@ def get_timestamp_behavior(base_df, sample):
         )
     )
 
+    global_std_timestamp_diff = np.std(
+        np.diff(
+            df[df[USER_COL].isin(positive_timestamp_diff)].sort_values(
+                [USER_COL, "timestamp"]
+            )["timestamp"]
+        )
+    )
+
     avg_std_time_diff_per_user["median_timestamp_diff"] = avg_std_time_diff_per_user[
         "median_timestamp_diff"
-    ].replace(0, global_median_timestamp_diff)
+    ].replace([0, np.nan], global_median_timestamp_diff)
+
+    avg_std_time_diff_per_user["std_timestamp_diff"] = avg_std_time_diff_per_user[
+        "std_timestamp_diff"
+    ].replace([0, np.nan], global_std_timestamp_diff)
 
     return avg_std_time_diff_per_user
 
@@ -331,12 +343,10 @@ def main():
         oracle_model = model_class(**model_params)
     else:
         print("Starting model selection...")
-        oracle_model = choose_best_model(base_file, f"{data_type}_{file_size}")
+        oracle_model = choose_best_model(df, f"{data_type}_{file_size}")
 
     print("Fitting and evaluating oracle model...")
-    trained_model, f1_score_test = fit_evaluate(
-        oracle_model, full_df=base_file, test_size=0.3
-    )
+    trained_model, f1_score_test = fit_evaluate(oracle_model, full_df=df, test_size=0.3)
     print(
         f"Model selection finished! model achieved f1 score of {f1_score_test:.2f} on test_set"
     )

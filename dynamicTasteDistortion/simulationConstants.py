@@ -18,3 +18,5 @@ USER_COL = "user"
 ITEM_COL = "item"
 GENRES_COL = "genres"
 RATING_COL = "rating"
+
+REVIEWS_PER_USER_THRESHOLD = 30

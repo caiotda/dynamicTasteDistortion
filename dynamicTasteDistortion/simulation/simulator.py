@@ -37,7 +37,6 @@ class Simulator:
         initial_date,
         user_timestamp_distribution,
         base_artifacts_path=None,
-        user_sample=None,
         bootstrapping_rounds=10,
         bootstrapped_df=None,
     ):
@@ -45,18 +44,19 @@ class Simulator:
         device = (
             model.device
             if model is not None
-            else "gpu" if torch.cuda.is_available() else "cpu"
+            else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )
-        self.timestamp_distribution = user_timestamp_distribution
+        self.timestamp_distribution = {
+            k: v for k, v in user_timestamp_distribution in v
+        }
+        print(f"User timestamp distribution?: {user_timestamp_distribution}")
         self.user_idx_to_id = {
             idx: user_id
             for idx, user_id in enumerate(self.timestamp_distribution.keys())
         }
 
-        if user_sample is None:
-            users = list(self.user_idx_to_id.values())
-        else:
-            users = user_sample
+        users = list(self.user_idx_to_id.values())
+        print(f"users no construtor: {users}")
         self.oracle_matrix = oracle_matrix[oracle_matrix[USER_COL].isin(users)]
         self.model = model
         self.initial_date = initial_date

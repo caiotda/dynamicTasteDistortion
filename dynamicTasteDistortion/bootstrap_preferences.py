@@ -47,12 +47,6 @@ def main():
     preference_matrix_path = (
         f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_oracle.pkl"
     )
-
-    users_path = (
-        f"{SIMULATION_PATH}/{data_type}_{file_size}_{num_users}_sampled_users.pkl"
-    )
-
-    users = pd.read_pickle(users_path)
     timestamp_output_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}_n_users={num_users}_avg_time_diff.csv"
     if os.path.exists(preference_matrix_path):
         print("Reading filled preference matrix...")
@@ -64,6 +58,9 @@ def main():
     if os.path.exists(timestamp_output_path):
         print("Reading user timestamp behaviour...")
         avg_std_time_diff_per_user = pd.read_csv(timestamp_output_path)
+        print(
+            f"timestamp path (no bootstrap preferences): {avg_std_time_diff_per_user}"
+        )
         userToExpDistribution = {
             user: expon(scale=row["median_timestamp_diff"])
             for user, row in avg_std_time_diff_per_user.iterrows()
@@ -84,7 +81,6 @@ def main():
         initial_date=0.0,
         user_timestamp_distribution=userToExpDistribution,
         bootstrapping_rounds=10,
-        user_sample=users,
     )
     print(f"Done! Saving bootstrapped clicks...")
     bootstrapped_clicks_path = f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_bootstrapped.pkl"
