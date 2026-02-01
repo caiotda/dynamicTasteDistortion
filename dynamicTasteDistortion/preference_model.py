@@ -23,6 +23,7 @@ from dynamicTasteDistortion.simulationConstants import (
     MODEL_ARTIFACTS_PATH,
     SIMULATION_PATH,
 )
+from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 
 DATA_TO_PATH = {"ml": MOVIELENS_PATH, "yelp": YELP_PATH, "steam": STEAM_PATH}
 
@@ -307,11 +308,16 @@ def main():
     if num_users is not None:
         idx = torch.randperm(len(candidates))[:num_users]
         users = [candidates[i] for i in idx.tolist()]
-        print(f"Persisting sampled users to {users_path} for simulation consistency...")
-        with open(users_path, "wb") as f:
-            pickle.dump(users, f)
+
     else:
         users = candidates
+
+    base_df = base_file[base_file[USER_COL].isin(users)]
+    df, user_id_map, _ = standardize_ids(base_df)
+    print(f"Persisting sampled users to {users_path} for simulation consistency...")
+    users = [user_id_map[user] for user in users]
+    with open(users_path, "wb") as f:
+        pickle.dump(users, f)
 
     if os.path.exists(oracle_model_params_path):
         print(
@@ -344,7 +350,7 @@ def main():
     else:
         print("Filling up rating matrix...")
         filled_oracle_matrix = fill_out_matrix(
-            base_df=base_file, model=trained_model, user_sample=users
+            base_df=df, model=trained_model, user_sample=users
         )
         print(f"Writing filled out matrix to {oracle_output_path}")
         filled_oracle_matrix.to_pickle(oracle_output_path)
@@ -355,9 +361,15 @@ def main():
         )
         avg_std_time_diff_per_user = pd.read_csv(timestamp_output_path)
     else:
-        avg_std_time_diff_per_user = get_timestamp_behavior(
-            base_df=base_file, sample=users
-        )
+        # TODO: aqui que quebra
+        print(f"Df a partir do qual vou gerar o timestamp: {df}")
+        avg_std_time_diff_per_user = get_timestamp_behavior(base_df=df, sample=users)
+        # Break if timestamp df is empty
+
+        if len(avg_std_time_diff_per_user) == 0:
+            print("Timestamp df is emtpy! Please check get_timestamp_behavior func")
+            return
+        print(f"timestamp diff: {avg_std_time_diff_per_user}")
         print(f"Writing timestamp behavior per user to {timestamp_output_path}")
         avg_std_time_diff_per_user.to_csv(
             timestamp_output_path,
