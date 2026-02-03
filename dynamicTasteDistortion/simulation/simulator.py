@@ -46,17 +46,13 @@ class Simulator:
             if model is not None
             else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )
-        self.timestamp_distribution = {
-            k: v for k, v in user_timestamp_distribution in v
-        }
-        print(f"User timestamp distribution?: {user_timestamp_distribution}")
+        self.timestamp_distribution = user_timestamp_distribution
         self.user_idx_to_id = {
             idx: user_id
             for idx, user_id in enumerate(self.timestamp_distribution.keys())
         }
 
         users = list(self.user_idx_to_id.values())
-        print(f"users no construtor: {users}")
         self.oracle_matrix = oracle_matrix[oracle_matrix[USER_COL].isin(users)]
         self.model = model
         self.initial_date = initial_date
