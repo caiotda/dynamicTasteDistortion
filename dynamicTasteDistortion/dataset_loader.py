@@ -1,5 +1,10 @@
 import pandas as pd
 
+from dynamicTasteDistortion.scripts.data_utils import (
+    filter_inactive_users,
+    preprocess_genres,
+)
+
 pd.options.mode.chained_assignment = None
 
 import unicodedata
@@ -14,6 +19,7 @@ import math
 
 from dynamicTasteDistortion.simulationConstants import (
     MOVIELENS_PATH,
+    REVIEWS_PER_USER_THRESHOLD,
     STEAM_PATH,
     YELP_PATH,
     USER_COL,
@@ -28,17 +34,6 @@ input_size_to_sample_size = {
     "m": 10_000_000,
     "l": 20_000_000,
 }
-
-
-synonyms = {
-    "children": "child",
-    "childs": "child",
-    "childrens": "child",
-    "thrill": "thriller",
-}
-
-
-REVIEWS_PER_USER_THRESHOLD = 30
 
 
 def get_ml_url(size):
@@ -212,61 +207,10 @@ def read_ml_raw(size):
     return base_df
 
 
-def preprocess_genres(df, genre_col="genres", SEP="|"):
-    return df[genre_col].apply(
-        lambda text: [text_preprocess(token) for token in text.split(SEP)]
-    )
-
-
-def normalize_word(word):
-    return synonyms.get(word, word)
-
-
-def text_preprocess(text):
-    text = normalize_word(text)
-    text = text.lower()
-    text = text.strip()
-    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("utf-8")
-    text = re.sub(r"\s+", "-", text)
-    return text
-
-
-def filter_inactive_users(df, threshold=REVIEWS_PER_USER_THRESHOLD):
-    users_to_keep = (
-        df.groupby(USER_COL)
-        .agg({ITEM_COL: "count"})
-        .reset_index()
-        .rename(columns={ITEM_COL: "n_reviews"})
-        .query(f"n_reviews >= {threshold}")[USER_COL]
-    )
-    users_to_keep = list(set(users_to_keep))
-    filtered_df = df[df[USER_COL].isin(users_to_keep)]
-
-    return filtered_df
-
-
-def standardize_ids(df):
-
-    processed_df = df.copy()
-
-    unique_user_ids = df[USER_COL].unique()
-    unique_item_ids = df[ITEM_COL].unique()
-    user_id_map = {
-        old_id: new_id for new_id, old_id in enumerate(sorted(unique_user_ids))
-    }
-    item_id_map = {
-        old_id: new_id for new_id, old_id in enumerate(sorted(unique_item_ids))
-    }
-    processed_df[USER_COL] = processed_df[USER_COL].map(user_id_map)
-    processed_df[ITEM_COL] = processed_df[ITEM_COL].map(item_id_map)
-
-    return processed_df
-
-
 def process_ml_df(df):
     # Padronizar user id e item id
     print("Preprocessing dataset...")
-    processed_df = standardize_ids(df)
+    processed_df = df.copy()
 
     # Padronizar a coluna de generos
 
@@ -283,7 +227,7 @@ def process_ml_df(df):
 def process_steam_df(df):
     # Padronizar user id e item id
     print("Preprocessing dataset...")
-    processed_df = standardize_ids(df)
+    processed_df = df.copy()
 
     processed_df[GENRES_COL] = preprocess_genres(processed_df, GENRES_COL, SEP=",")
     processed_df["binarized_rating"] = processed_df[RATING_COL].apply(
@@ -295,7 +239,7 @@ def process_steam_df(df):
 def process_yelp_df(df):
     # Padronizar user id e item id
     print("Preprocessing dataset...")
-    processed_df = standardize_ids(df)
+    processed_df = df.copy()
 
     # Padronizar a coluna de generos
     processed_df = processed_df[~processed_df[GENRES_COL].isna()]
@@ -303,6 +247,9 @@ def process_yelp_df(df):
     # ratings >= 4 -> 1 (binarized)
     processed_df["binarized_rating"] = processed_df[RATING_COL].apply(
         lambda rating: int(rating >= 4)
+    )
+    processed_df["timestamp"] = (
+        pd.to_datetime(processed_df["date"]).astype("int64") // 10**9
     )
     return processed_df
 

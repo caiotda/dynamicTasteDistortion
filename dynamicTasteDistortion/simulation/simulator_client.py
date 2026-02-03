@@ -65,20 +65,12 @@ def main():
     num_rounds_per_eval = int(args.num_rounds_per_eval)
     num_users = int(args.num_users)
 
-    timestamp_distribution = load_time_diff_df(data_type, file_size)
-    oracle_matrix = load_oracle_matrix(data_type, file_size)
-    bootstrapped_df = load_bootstrapped_clicks(data_type, file_size)
+    timestamp_distribution = load_time_diff_df(data_type, file_size, num_users)
+    oracle_matrix = load_oracle_matrix(data_type, file_size, num_users)
+    bootstrapped_df = load_bootstrapped_clicks(data_type, file_size, num_users)
 
     n_users = oracle_matrix[USER_COL].max() + 1
     n_items = oracle_matrix[ITEM_COL].max() + 1
-
-    if num_users is not None:
-        candidates = timestamp_distribution.index.tolist()
-        idx = torch.randperm(len(candidates))[:num_users]
-        users = [candidates[i] for i in idx.tolist()]
-        timestamp_distribution = timestamp_distribution.iloc[users]
-        oracle_matrix = oracle_matrix[oracle_matrix[USER_COL].isin(users)]
-        bootstrapped_df = bootstrapped_df[bootstrapped_df[USER_COL].isin(users)]
 
     model = bprMFWithClickDebiasing(
         num_users=n_users,
