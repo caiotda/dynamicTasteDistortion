@@ -23,6 +23,12 @@ from dynamicTasteDistortion.simulationConstants import (
     MODEL_ARTIFACTS_PATH,
     SIMULATION_PATH,
 )
+
+from ioUtils import (
+    get_or_create_oracle_matrix,
+    get_or_create_oracle_model_artifacts,
+    get_or_create_time_diff_df,
+)
 from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 
 DATA_TO_PATH = {"ml": MOVIELENS_PATH, "yelp": YELP_PATH, "steam": STEAM_PATH}
@@ -301,20 +307,9 @@ def main():
     base_file = pd.read_pickle(file_path)
     print("Done!")
 
-    # Define I/O paths
     users_path = (
         f"{SIMULATION_PATH}/{data_type}_{file_size}_{num_users}_sampled_users.pkl"
     )
-
-    oracle_model_params_path = (
-        f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}/oracle_model_params.pkl"
-    )
-
-    oracle_output_path = (
-        f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_oracle.pkl"
-    )
-
-    timestamp_output_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}_n_users={num_users}_avg_time_diff.csv"
 
     candidates = base_file[USER_COL].unique().tolist()
     if num_users is not None:
@@ -331,58 +326,24 @@ def main():
     with open(users_path, "wb") as f:
         pickle.dump(users, f)
 
-    if os.path.exists(oracle_model_params_path):
-        print(
-            f"Oracle model trained on {data_type}_{file_size} found!Skipping model selection"
-        )
-        with open(oracle_model_params_path, "rb") as f:
-            oracle_model_artifact = pickle.load(f)
-
-        model_class = oracle_model_artifact["model_class"]
-        model_params = oracle_model_artifact["params"]
-        oracle_model = model_class(**model_params)
-    else:
-        print("Starting model selection...")
-        oracle_model = choose_best_model(df, f"{data_type}_{file_size}")
+    print("Creating oracle model...")
+    oracle_model = get_or_create_oracle_model_artifacts(df, data_type, file_size)
 
     print("Fitting and evaluating oracle model...")
     trained_model, f1_score_test = fit_evaluate(oracle_model, full_df=df, test_size=0.3)
     print(
         f"Model selection finished! model achieved f1 score of {f1_score_test:.2f} on test_set"
     )
-    if os.path.exists(oracle_output_path):
-        print(
-            f"Filled oracle matrix for {data_type}_{file_size} that uses {num_users} users already exists! Skipping matrix filling."
-        )
-        print(f"Reading filled oracle matrix from {oracle_output_path}...")
-        with open(oracle_output_path, "rb") as f:
-            filled_oracle_matrix = pickle.load(f)
-    else:
-        print("Filling up rating matrix...")
-        filled_oracle_matrix = fill_out_matrix(
-            base_df=df, model=trained_model, user_sample=users
-        )
-        print(f"Writing filled out matrix to {oracle_output_path}")
-        filled_oracle_matrix.to_pickle(oracle_output_path)
+    print("Creating filled oracle preference matrix...")
+    get_or_create_oracle_matrix(
+        oracle_model=trained_model,
+        df=df,
+        data_type=data_type,
+        file_size=file_size,
+        users=users,
+    )
     print("Defining user timestamp behaviour from source file...")
-    if os.path.exists(timestamp_output_path):
-        print(
-            f"Timestamp behavior for {data_type}_{file_size} that uses {num_users} users already exists! Skipping timestamp behavior calculation."
-        )
-        avg_std_time_diff_per_user = pd.read_csv(timestamp_output_path)
-    else:
-        avg_std_time_diff_per_user = get_timestamp_behavior(base_df=df, sample=users)
-        # Break if timestamp df is empty
-
-        if len(avg_std_time_diff_per_user) == 0:
-            print("Timestamp df is emtpy! Please check get_timestamp_behavior func")
-            return
-        print(f"timestamp diff: {avg_std_time_diff_per_user}")
-        print(f"Writing timestamp behavior per user to {timestamp_output_path}")
-        avg_std_time_diff_per_user.to_csv(
-            timestamp_output_path,
-            index=False,
-        )
+    get_or_create_time_diff_df(df, data_type, file_size, users)
 
     print("All done!")
 
