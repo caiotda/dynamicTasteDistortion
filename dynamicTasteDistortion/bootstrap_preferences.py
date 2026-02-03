@@ -56,17 +56,13 @@ def main():
         return
 
     if os.path.exists(timestamp_output_path):
-        print("Reading user timestamp behaviour...")
+        print(f"Reading user timestamp behaviour from {timestamp_output_path}...")
         avg_std_time_diff_per_user = pd.read_csv(timestamp_output_path)
-        print(
-            f"timestamp path (no bootstrap preferences): {avg_std_time_diff_per_user}"
-        )
         userToExpDistribution = {
             user: expon(scale=row["median_timestamp_diff"])
             for user, row in avg_std_time_diff_per_user.iterrows()
         }
     else:
-        print(f"Path: {timestamp_output_path}")
         print(
             "Timestamp behaviour file not found! Please run preference_model.py first."
         )
