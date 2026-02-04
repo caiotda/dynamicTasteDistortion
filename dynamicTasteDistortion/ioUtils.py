@@ -31,11 +31,17 @@ def load_pickle_artifact(base_path):
     return pickle_artifact
 
 
+def get_oracle_matrix_path(data_type, file_size, num_users):
+    return f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_oracle.pkl"
+
+
+def get_timestamp_behavior_path(data_type, file_size, num_users):
+    return f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}_n_users={num_users}_avg_time_diff.csv"
+
+
 def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
     num_users = len(users)
-    oracle_output_path = (
-        f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_oracle.pkl"
-    )
+    oracle_output_path = get_oracle_matrix_path(data_type, file_size, num_users)
     if os.path.exists(oracle_output_path):
         print(
             f"Filled oracle matrix for {data_type}_{file_size} that uses {num_users} users already exists! Skipping matrix filling."
@@ -48,6 +54,7 @@ def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
         )
         print(f"Writing filled out matrix to {oracle_output_path}")
     filled_oracle_matrix.to_pickle(oracle_output_path)
+    return filled_oracle_matrix
 
 
 def get_or_create_oracle_model_artifacts(df, data_type, size):
@@ -74,7 +81,7 @@ def get_or_create_oracle_model_artifacts(df, data_type, size):
 
 def get_or_create_time_diff_df(df, data_type, size, users):
     num_users = len(users)
-    timestamp_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}_{size}_n_users={num_users}_avg_time_diff.csv"
+    timestamp_path = get_timestamp_behavior_path(data_type, size, num_users)
     if os.path.exists(timestamp_path):
         print(
             f"Timestamp behavior for {data_type}_{size} that uses {num_users} users already exists! Skipping timestamp behavior calculation."

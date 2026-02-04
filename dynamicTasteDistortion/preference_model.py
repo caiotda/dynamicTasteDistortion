@@ -21,7 +21,6 @@ from dynamicTasteDistortion.simulationConstants import (
     input_size_to_file_name,
     RESULTS_PATH,
     MODEL_ARTIFACTS_PATH,
-    SIMULATION_PATH,
 )
 
 from ioUtils import (
@@ -306,11 +305,6 @@ def main():
     print(f"Loading base dataset from {file_path}...")
     base_file = pd.read_pickle(file_path)
     print("Done!")
-
-    users_path = (
-        f"{SIMULATION_PATH}/{data_type}_{file_size}_{num_users}_sampled_users.pkl"
-    )
-
     candidates = base_file[USER_COL].unique().tolist()
     if num_users is not None:
         idx = torch.randperm(len(candidates))[:num_users]
@@ -321,10 +315,7 @@ def main():
 
     base_df = base_file[base_file[USER_COL].isin(users)]
     df, user_id_map, _ = standardize_ids(base_df)
-    print(f"Persisting sampled users to {users_path} for simulation consistency...")
     users = [user_id_map[user] for user in users]
-    with open(users_path, "wb") as f:
-        pickle.dump(users, f)
 
     print("Creating oracle model...")
     oracle_model = get_or_create_oracle_model_artifacts(df, data_type, file_size)
@@ -335,7 +326,7 @@ def main():
         f"Model selection finished! model achieved f1 score of {f1_score_test:.2f} on test_set"
     )
     print("Creating filled oracle preference matrix...")
-    get_or_create_oracle_matrix(
+    _ = get_or_create_oracle_matrix(
         oracle_model=trained_model,
         df=df,
         data_type=data_type,
