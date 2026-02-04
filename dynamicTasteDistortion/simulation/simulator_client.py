@@ -1,4 +1,5 @@
 import argparse
+import pandas as pd
 import torch
 import pickle
 from pathlib import Path
@@ -12,9 +13,10 @@ from dynamicTasteDistortion.simulationConstants import (
 from dynamicTasteDistortion.simulation.simulator import Simulator
 
 from dynamicTasteDistortion.ioUtils import (
+    get_oracle_matrix_path,
+    get_timestamp_behavior_path,
     load_bootstrapped_clicks,
-    get_or_create_time_diff_df,
-    get_or_create_oracle_matrix,
+    load_pickle_artifact,
 )
 
 
@@ -65,8 +67,12 @@ def main():
     num_rounds_per_eval = int(args.num_rounds_per_eval)
     num_users = int(args.num_users)
 
-    timestamp_distribution = get_or_create_time_diff_df(data_type, file_size, num_users)
-    oracle_matrix = get_or_create_oracle_matrix(data_type, file_size, num_users)
+    timestamp_distribution = pd.read_csv(
+        get_timestamp_behavior_path(data_type, file_size, num_users)
+    )
+    oracle_matrix = load_pickle_artifact(
+        get_oracle_matrix_path(data_type, file_size, num_users)
+    )
     bootstrapped_df = load_bootstrapped_clicks(data_type, file_size, num_users)
 
     n_users = oracle_matrix[USER_COL].max() + 1
