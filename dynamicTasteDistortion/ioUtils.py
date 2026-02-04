@@ -1,6 +1,8 @@
 from dynamicTasteDistortion.preference_model import (
     choose_best_model,
-    # \/ Dependencia circular.
+)
+
+from dynamicTasteDistortion.scripts.bootstrapping_utils import (
     fill_out_matrix,
     get_timestamp_behavior,
 )
