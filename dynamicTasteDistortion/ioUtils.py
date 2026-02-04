@@ -1,4 +1,4 @@
-from dynamicTasteDistortion.preference_model import (
+from dynamicTasteDistortion.scripts.model_utils import (
     choose_best_model,
 )
 

@@ -13,8 +13,8 @@ from dynamicTasteDistortion.simulation.simulator import Simulator
 
 from dynamicTasteDistortion.ioUtils import (
     load_bootstrapped_clicks,
-    load_time_diff_df,
-    load_oracle_matrix,
+    get_or_create_time_diff_df,
+    get_or_create_oracle_matrix,
 )
 
 
@@ -65,8 +65,8 @@ def main():
     num_rounds_per_eval = int(args.num_rounds_per_eval)
     num_users = int(args.num_users)
 
-    timestamp_distribution = load_time_diff_df(data_type, file_size, num_users)
-    oracle_matrix = load_oracle_matrix(data_type, file_size, num_users)
+    timestamp_distribution = get_or_create_time_diff_df(data_type, file_size, num_users)
+    oracle_matrix = get_or_create_oracle_matrix(data_type, file_size, num_users)
     bootstrapped_df = load_bootstrapped_clicks(data_type, file_size, num_users)
 
     n_users = oracle_matrix[USER_COL].max() + 1
