@@ -9,12 +9,15 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from dynamicTasteDistortion.ioUtils import (
+    get_oracle_matrix_path,
+    get_timestamp_behavior_path,
+)
 from dynamicTasteDistortion.simulation.simulator import Simulator
 
 
 from dynamicTasteDistortion.simulationConstants import (
     input_size_to_file_name,
-    MODEL_ARTIFACTS_PATH,
     SIMULATION_PATH,
 )
 
@@ -44,10 +47,8 @@ def main():
     data_type = args.data
     file_size = input_size_to_file_name[args.size]
 
-    preference_matrix_path = (
-        f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_oracle.pkl"
-    )
-    timestamp_output_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}_n_users={num_users}_avg_time_diff.csv"
+    preference_matrix_path = get_oracle_matrix_path(data_type, file_size, num_users)
+    timestamp_output_path = get_timestamp_behavior_path(data_type, file_size, num_users)
     if os.path.exists(preference_matrix_path):
         print("Reading filled preference matrix...")
         oracle_df = pd.read_pickle(preference_matrix_path)

@@ -21,7 +21,12 @@ from dynamicTasteDistortion.simulationConstants import (
     input_size_to_file_name,
     RESULTS_PATH,
     MODEL_ARTIFACTS_PATH,
-    SIMULATION_PATH,
+)
+
+from ioUtils import (
+    get_or_create_oracle_matrix,
+    get_or_create_oracle_model_artifacts,
+    get_or_create_time_diff_df,
 )
 from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 
@@ -176,100 +181,6 @@ def fit_evaluate(model, full_df, test_size=0.3):
     return fit_model, test_set_f1_score
 
 
-def fill_out_matrix(base_df, model, user_sample):
-    reader = Reader(rating_scale=(1, 5))
-    df = base_df[base_df[USER_COL].isin(user_sample)]
-    trainset = SurpriseDataset.load_from_df(
-        df[["user", "item", "rating"]], reader
-    ).build_full_trainset()
-    model.fit(trainset)
-    all_users = trainset.all_users()
-    all_items = trainset.all_items()
-
-    user_ids = [trainset.to_raw_uid(u) for u in all_users]
-    item_ids = [trainset.to_raw_iid(i) for i in all_items]
-    predictions = []
-    for user_id in tqdm(user_ids, desc="Predicting missing ratings"):
-        surprise_internal_user_id = trainset.to_inner_uid(user_id)
-        rated_item_ids = set(
-            [
-                trainset.to_raw_iid(item)
-                for item, _ in trainset.ur[surprise_internal_user_id]
-            ]
-        )
-        for item_id in item_ids:
-            if item_id not in rated_item_ids:
-                pred = model.predict(user_id, item_id)
-                predictions.append([user_id, item_id, pred])
-
-    # binarize predictions
-    processed_predictions = [
-        [pred[0], pred[1], int(pred[2].est >= 4)] for pred in predictions
-    ]
-
-    predictions_df = pd.DataFrame(
-        processed_predictions, columns=["user", "item", "rating"]
-    )
-
-    genres_df = df[["item", "genres"]].drop_duplicates(subset="item")
-    predictions_df = predictions_df.merge(genres_df, on="item")
-    base_df = df[["user", "item", "genres", "rating"]]
-    base_df.loc[:, "rating"] = base_df["rating"].apply(lambda rating: int(rating >= 4))
-
-    # Combine missing entries with previously filled
-    df_filled = pd.concat([base_df, predictions_df], ignore_index=True)
-
-    return df_filled
-
-
-def get_timestamp_behavior(base_df, sample):
-    df = base_df[base_df[USER_COL].isin(sample)]
-    avg_std_time_diff_per_user = (
-        df.sort_values([USER_COL, "timestamp"])
-        .groupby(USER_COL)["timestamp"]
-        .agg(
-            median_timestamp_diff=lambda x: (
-                np.median(np.diff(x)) if len(x) > 1 else np.nan
-            ),
-            std_timestamp_diff=lambda x: np.diff(x).std() if len(x) > 1 else np.nan,
-            n_entries="count",
-        )
-        .reset_index()
-    )
-
-    positive_timestamp_diff = list(
-        avg_std_time_diff_per_user[
-            avg_std_time_diff_per_user["median_timestamp_diff"] > 0
-        ][USER_COL]
-    )
-
-    global_median_timestamp_diff = np.median(
-        np.diff(
-            df[df[USER_COL].isin(positive_timestamp_diff)].sort_values(
-                [USER_COL, "timestamp"]
-            )["timestamp"]
-        )
-    )
-
-    global_std_timestamp_diff = np.std(
-        np.diff(
-            df[df[USER_COL].isin(positive_timestamp_diff)].sort_values(
-                [USER_COL, "timestamp"]
-            )["timestamp"]
-        )
-    )
-
-    avg_std_time_diff_per_user["median_timestamp_diff"] = avg_std_time_diff_per_user[
-        "median_timestamp_diff"
-    ].replace([0, np.nan], global_median_timestamp_diff)
-
-    avg_std_time_diff_per_user["std_timestamp_diff"] = avg_std_time_diff_per_user[
-        "std_timestamp_diff"
-    ].replace([0, np.nan], global_std_timestamp_diff)
-
-    return avg_std_time_diff_per_user
-
-
 def main():
     parser = argparse.ArgumentParser(description="Load and preprocess datasets.")
     parser.add_argument(
@@ -300,22 +211,6 @@ def main():
     print(f"Loading base dataset from {file_path}...")
     base_file = pd.read_pickle(file_path)
     print("Done!")
-
-    # Define I/O paths
-    users_path = (
-        f"{SIMULATION_PATH}/{data_type}_{file_size}_{num_users}_sampled_users.pkl"
-    )
-
-    oracle_model_params_path = (
-        f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}/oracle_model_params.pkl"
-    )
-
-    oracle_output_path = (
-        f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_oracle.pkl"
-    )
-
-    timestamp_output_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}_n_users={num_users}_avg_time_diff.csv"
-
     candidates = base_file[USER_COL].unique().tolist()
     if num_users is not None:
         idx = torch.randperm(len(candidates))[:num_users]
@@ -326,63 +221,26 @@ def main():
 
     base_df = base_file[base_file[USER_COL].isin(users)]
     df, user_id_map, _ = standardize_ids(base_df)
-    print(f"Persisting sampled users to {users_path} for simulation consistency...")
     users = [user_id_map[user] for user in users]
-    with open(users_path, "wb") as f:
-        pickle.dump(users, f)
 
-    if os.path.exists(oracle_model_params_path):
-        print(
-            f"Oracle model trained on {data_type}_{file_size} found!Skipping model selection"
-        )
-        with open(oracle_model_params_path, "rb") as f:
-            oracle_model_artifact = pickle.load(f)
-
-        model_class = oracle_model_artifact["model_class"]
-        model_params = oracle_model_artifact["params"]
-        oracle_model = model_class(**model_params)
-    else:
-        print("Starting model selection...")
-        oracle_model = choose_best_model(df, f"{data_type}_{file_size}")
+    print("Creating oracle model...")
+    oracle_model = get_or_create_oracle_model_artifacts(df, data_type, file_size)
 
     print("Fitting and evaluating oracle model...")
     trained_model, f1_score_test = fit_evaluate(oracle_model, full_df=df, test_size=0.3)
     print(
         f"Model selection finished! model achieved f1 score of {f1_score_test:.2f} on test_set"
     )
-    if os.path.exists(oracle_output_path):
-        print(
-            f"Filled oracle matrix for {data_type}_{file_size} that uses {num_users} users already exists! Skipping matrix filling."
-        )
-        print(f"Reading filled oracle matrix from {oracle_output_path}...")
-        with open(oracle_output_path, "rb") as f:
-            filled_oracle_matrix = pickle.load(f)
-    else:
-        print("Filling up rating matrix...")
-        filled_oracle_matrix = fill_out_matrix(
-            base_df=df, model=trained_model, user_sample=users
-        )
-        print(f"Writing filled out matrix to {oracle_output_path}")
-        filled_oracle_matrix.to_pickle(oracle_output_path)
+    print("Creating filled oracle preference matrix...")
+    _ = get_or_create_oracle_matrix(
+        oracle_model=trained_model,
+        df=df,
+        data_type=data_type,
+        file_size=file_size,
+        users=users,
+    )
     print("Defining user timestamp behaviour from source file...")
-    if os.path.exists(timestamp_output_path):
-        print(
-            f"Timestamp behavior for {data_type}_{file_size} that uses {num_users} users already exists! Skipping timestamp behavior calculation."
-        )
-        avg_std_time_diff_per_user = pd.read_csv(timestamp_output_path)
-    else:
-        avg_std_time_diff_per_user = get_timestamp_behavior(base_df=df, sample=users)
-        # Break if timestamp df is empty
-
-        if len(avg_std_time_diff_per_user) == 0:
-            print("Timestamp df is emtpy! Please check get_timestamp_behavior func")
-            return
-        print(f"timestamp diff: {avg_std_time_diff_per_user}")
-        print(f"Writing timestamp behavior per user to {timestamp_output_path}")
-        avg_std_time_diff_per_user.to_csv(
-            timestamp_output_path,
-            index=False,
-        )
+    get_or_create_time_diff_df(df, data_type, file_size, users)
 
     print("All done!")
 

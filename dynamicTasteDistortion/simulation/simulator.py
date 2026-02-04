@@ -16,7 +16,6 @@ from dynamicTasteDistortion.simulation.simulationUtils import (
     get_feedback_for_predictions,
 )
 from dynamicTasteDistortion.simulationConstants import (
-    RESULTS_PATH,
     USER_COL,
     ITEM_COL,
     GENRES_COL,
