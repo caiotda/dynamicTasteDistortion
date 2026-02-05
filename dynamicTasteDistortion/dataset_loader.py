@@ -65,28 +65,14 @@ def download(dataset_url, destination_dir):
     return file_name
 
 
-def download_yelp_files():
-    yelp_url = (
-        "https://www.kaggle.com/api/v1/datasets/download/yelp-dataset/yelp-dataset"
-    )
-    destination_dir = f"{YELP_PATH}/raw/"
-    _ = download(yelp_url, destination_dir)
-    return destination_dir
-
-
-def download_steam_file():
-    steam_url = "https://www.kaggle.com/api/v1/datasets/download/antonkozyriev/game-recommendations-on-steam"
-    destination_dir = f"{STEAM_PATH}/raw/"
-    _ = download(steam_url, destination_dir)
-    return destination_dir
-
-
 def read_steam_sub_file(file_name):
     return pd.read_csv(f"{STEAM_PATH}/raw/{file_name}.csv")
 
 
 def read_steam_raw(size):
-    steam_path = download_steam_file()
+    steam_url = "https://www.kaggle.com/api/v1/datasets/download/antonkozyriev/game-recommendations-on-steam"
+    destination_dir = f"{STEAM_PATH}/raw/steam_{size}/"
+    _ = download(steam_url, destination_dir)
     print("Reading steam sub files...")
     reviews = read_steam_sub_file("recommendations")[
         ["user_id", "app_id", "is_recommended"]
@@ -97,7 +83,7 @@ def read_steam_raw(size):
     ].tolist()
     filtered_reviews = reviews[reviews["user_id"].isin(active_users)]
 
-    games = read_json_file(steam_path, "games_metadata.json")
+    games = read_json_file(destination_dir, "games_metadata.json")
     games["num_tags"] = games["tags"].apply(len)
     filtered_games = games[games["num_tags"] > 0]
     filtered_games["genres"] = filtered_games["tags"].apply(lambda l: ",".join(l))
@@ -138,23 +124,27 @@ def read_json_file(base_path, file, limit=math.inf):
 
 
 def read_yelp_raw(size):
-    yelp_path = download_yelp_files()
+    yelp_url = (
+        "https://www.kaggle.com/api/v1/datasets/download/yelp-dataset/yelp-dataset"
+    )
+    destination_dir = f"{YELP_PATH}/raw/yelp_{size}/"
+    _ = download(yelp_url, destination_dir)
     review_file = "yelp_academic_dataset_review.json"
     user_file = "yelp_academic_dataset_user.json"
     business_file = "yelp_academic_dataset_business.json"
 
-    users_df = read_json_file(yelp_path, user_file, limit=size)[
+    users_df = read_json_file(destination_dir, user_file, limit=size)[
         ["user_id", "review_count"]
     ]
     filtered_users_df = users_df[users_df["review_count"] >= REVIEWS_PER_USER_THRESHOLD]
     users_to_keep = list(filtered_users_df["user_id"].unique())
 
-    reviews_df = read_json_file(yelp_path, review_file, limit=size)[
+    reviews_df = read_json_file(destination_dir, review_file, limit=size)[
         ["user_id", "business_id", "stars", "date"]
     ]
     filtered_reviews = reviews_df[reviews_df["user_id"].isin(users_to_keep)]
 
-    business_df = read_json_file(yelp_path, business_file, limit=size)[
+    business_df = read_json_file(destination_dir, business_file, limit=size)[
         ["business_id", "categories"]
     ].drop_duplicates()
     yelp_df = filtered_reviews.merge(business_df, on="business_id")
@@ -171,7 +161,7 @@ def read_yelp_raw(size):
 
 def read_ml_raw(size):
     dataset_url = get_ml_url(size)
-    destination_dir = f"{MOVIELENS_PATH}/raw/"
+    destination_dir = f"{MOVIELENS_PATH}/raw/ml_{size}/"
 
     _ = download(dataset_url, destination_dir)
     file_name_cleaned = (
