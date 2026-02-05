@@ -224,36 +224,36 @@ class Simulator:
             round_df, round_rec = self.simulate_user_feedback(
                 mask=None, feedback_from_bootstrap=False, k=k
             )
+
+            user_history_tensor = build_user_genre_history_distribution(
+                boostrapped_df,
+                self.p_g_i,
+                n_users=self.n_users,
+                n_items=self.n_items,
+                weight_col="constant",
+            )
+
+            rec_tensor = build_user_genre_history_distribution(
+                round_df,
+                self.p_g_i,
+                n_users=self.n_users,
+                n_items=self.n_items,
+                weight_col="rating",  # Prediction
+            )
+            iteration_mace = mace(
+                rec_df=round_df.groupby(USER_COL).agg(list).reset_index(),
+                p_g_u=user_history_tensor,
+                p_g_i=self.p_g_i,
+            )
+            iteration_avg_kl_div = get_avg_kl_div(
+                self.users, user_history_tensor, rec_tensor
+            )
+            kl_divs.append(iteration_avg_kl_div)
+            maces.append(iteration_mace)
             if round_idx % L == 0:
                 print("retraining model...")
                 _ = self.model.fit(boostrapped_df)
-                print("Calculating mace")
-                user_history_tensor = build_user_genre_history_distribution(
-                    boostrapped_df,
-                    self.p_g_i,
-                    n_users=self.n_users,
-                    n_items=self.n_items,
-                    weight_col="constant",
-                )
 
-                rec_tensor = build_user_genre_history_distribution(
-                    round_df,
-                    self.p_g_i,
-                    n_users=self.n_users,
-                    n_items=self.n_items,
-                    weight_col="rating",  # Prediction
-                )
-
-                iteration_mace = mace(
-                    rec_df=round_df.groupby(USER_COL).agg(list).reset_index(),
-                    p_g_u=user_history_tensor,
-                    p_g_i=self.p_g_i,
-                )
-                iteration_avg_kl_div = get_avg_kl_div(
-                    self.users, user_history_tensor, rec_tensor
-                )
-                kl_divs.append(iteration_avg_kl_div)
-                maces.append(iteration_mace)
             if round_idx % 100 == 0:
                 boostrapped_df.to_csv(
                     f"{self.base_artifacts_path}/simulated_recommendation_round_{round_idx}.csv"
