@@ -19,53 +19,43 @@ from dynamicTasteDistortion.ioUtils import (
     load_pickle_artifact,
 )
 
+from dynamicTasteDistortion.dataset_loader import load_df
+
 
 from scipy.stats import expon
 
 from bprMf.bpr_mf import bprMFWithClickDebiasing
+from dynamicTasteDistortion.scripts.model_utils import MostPopularRecommender
+from dynamicTasteDistortion.scripts.data_utils import standardize_ids
+import yaml
 
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    parser = argparse.ArgumentParser(description="Load and preprocess datasets.")
+    parser = argparse.ArgumentParser(description="Load experiment config.")
     parser.add_argument(
-        "--size",
-        choices=["s", "m", "l"],
-        required=True,
-        help="Dataset size: s (1m), m (10m), l (20m).",
-    )
-    parser.add_argument(
-        "--data",
-        choices=["ml", "yelp", "steam"],
-        required=True,
-        help="Dataset type: ml (MovieLens); yelp; steam",
-    )
-
-    parser.add_argument(
-        "--rounds",
-        required=True,
-        help="Number of simulation rounds.",
-    )
-
-    parser.add_argument(
-        "--num_users",
-        required=True,
-        help="Number of users used in the simulation.",
-    )
-
-    parser.add_argument(
-        "--num_rounds_per_eval",
-        required=True,
-        help="Number of rounds before triggering retraining and MACE measuring",
+        "--exp_file",
+        default="experiment_config.yaml",
+        help="YAML file with experiment configuration.",
     )
 
     args = parser.parse_args()
-    data_type = args.data
-    size = args.size
+
+    with open(args.exp_file, "r") as f:
+        cfg = yaml.safe_load(f)
+
+    model_type = cfg["model"]
+    data_type = cfg["data"]
+    size = cfg["size"]
     file_size = input_size_to_file_name[size]
-    rounds = int(args.rounds)
-    num_rounds_per_eval = int(args.num_rounds_per_eval)
-    num_users = int(args.num_users)
+
+    exp_name = cfg.get("exp_name", "default_experiment")
+
+    use_oracle_matrix = True if cfg.get("use_oracle_matrix", "n") == "y" else False
+
+    rounds = int(cfg["rounds"])
+    num_rounds_per_eval = int(cfg["num_rounds_per_eval"])
+    num_users = int(cfg["num_users"])
 
     timestamp_distribution = pd.read_csv(
         get_timestamp_behavior_path(data_type, file_size, num_users)
@@ -78,15 +68,21 @@ def main():
     n_users = oracle_matrix[USER_COL].max() + 1
     n_items = oracle_matrix[ITEM_COL].max() + 1
 
-    model = bprMFWithClickDebiasing(
-        num_users=n_users,
-        num_items=n_items,
-        factors=30,
-        n_epochs=1,
-        reg_lambda=5e-4,
-        dev=device,
-        lr=1e-3,
-    )
+    if model_type is None or model_type == "bpr":
+        model = bprMFWithClickDebiasing(
+            num_users=n_users,
+            num_items=n_items,
+            factors=30,
+            n_epochs=1,
+            reg_lambda=5e-4,
+            dev=device,
+            lr=1e-3,
+        )
+    else:
+        print(f"Loading {data_type}_{file_size} dataset to fit Most Popular model...")
+        df = load_df(data_type, size)
+        processed_df, _, _ = standardize_ids(df)
+        model = MostPopularRecommender(processed_df)
 
     userToExpDistribution = {
         user: expon(scale=row["median_timestamp_diff"])
@@ -96,6 +92,7 @@ def main():
         Path(RESULTS_PATH)
         / f"{data_type}_{file_size}"
         / "simulated"
+        / f"exp={exp_name}"
         / f"rounds={rounds}"
         / f"users={num_users}"
         / f"eval_every={num_rounds_per_eval}"
@@ -108,6 +105,7 @@ def main():
         user_timestamp_distribution=userToExpDistribution,
         bootstrapped_df=bootstrapped_df,
         base_artifacts_path=base_artifacts_path,
+        ignore_oracle_matrix=not use_oracle_matrix,
     )
     simulated_df, maces, kl_divs = sim.simulate(L=num_rounds_per_eval, rounds=rounds)
 

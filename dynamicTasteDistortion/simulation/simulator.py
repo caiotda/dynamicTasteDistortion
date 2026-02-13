@@ -38,6 +38,7 @@ class Simulator:
         base_artifacts_path=None,
         bootstrapping_rounds=10,
         bootstrapped_df=None,
+        ignore_oracle_matrix=False,
     ):
 
         device = (
@@ -46,13 +47,19 @@ class Simulator:
             else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )
         self.timestamp_distribution = user_timestamp_distribution
+        # TODO: isso precisa ser meio refatorado.
+        self.ignore_oracle_matrix = ignore_oracle_matrix
         self.user_idx_to_id = {
             idx: user_id
             for idx, user_id in enumerate(self.timestamp_distribution.keys())
         }
 
         users = list(self.user_idx_to_id.values())
-        self.oracle_matrix = oracle_matrix[oracle_matrix[USER_COL].isin(users)]
+        self.oracle_matrix = (
+            oracle_matrix[oracle_matrix[USER_COL].isin(users)]
+            if oracle_matrix is not None
+            else None
+        )
         self.model = model
         self.initial_date = initial_date
 
@@ -113,8 +120,10 @@ class Simulator:
             rec, score = self.model.recommend(
                 users=self.users, k=k, candidates=self.items, mask=mask
             )
-
-        feedback_matrix = get_feedback_for_predictions(self.oracle_matrix, rec)
+        if self.ignore_oracle_matrix:
+            feedback_matrix = get_feedback_for_predictions(None, rec)
+        else:
+            feedback_matrix = get_feedback_for_predictions(self.oracle_matrix, rec)
         indices = get_matrix_coordinates(feedback_matrix)
 
         users_indices, click_positions = indices[:, 0].tolist(), indices[:, 1].tolist()
@@ -220,9 +229,22 @@ class Simulator:
         boostrapped_df["constant"] = 1.0
         maces = []
         kl_divs = []
+        use_random_rec = False
+
         for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
+            #     mask = torch.ones((self.n_users, self.n_items), dtype=torch.float32)
+            #     seen = boostrapped_df[boostrapped_df["relevant"] == 1.0][
+            #         [USER_COL, ITEM_COL]
+            #     ]
+            #     user_idx = torch.tensor(seen[USER_COL].astype(int).values, dtype=torch.long)
+            #     item_idx = torch.tensor(seen[ITEM_COL].astype(int).values, dtype=torch.long)
+
+            #     mask[user_idx, item_idx] = -1.0
             round_df, round_rec = self.simulate_user_feedback(
-                mask=None, feedback_from_bootstrap=False, k=k
+                # mask=mask, feedback_from_bootstrap=use_random_rec, k=k
+                mask=None,
+                feedback_from_bootstrap=use_random_rec,
+                k=k,
             )
 
             user_history_tensor = build_user_genre_history_distribution(
@@ -250,9 +272,9 @@ class Simulator:
             )
             kl_divs.append(iteration_avg_kl_div)
             maces.append(iteration_mace)
-            if round_idx % L == 0:
+            if round_idx % L == 0 and not use_random_rec:
                 print("retraining model...")
-                _ = self.model.fit(boostrapped_df)
+                _ = self.model.fit(boostrapped_df, debug=False)
 
             if round_idx % 100 == 0:
                 boostrapped_df.to_csv(

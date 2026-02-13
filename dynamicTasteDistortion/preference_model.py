@@ -26,18 +26,21 @@ from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 DATA_TO_PATH = {"ml": MOVIELENS_PATH, "yelp": YELP_PATH, "steam": STEAM_PATH}
 
 
-def split_train_test_per_user(df, train_frac=0.8, seed=42):
-    rng = np.random.default_rng(seed)
+def split_train_test_per_user(df, train_frac=0.8):
+    train_parts = []
+    test_parts = []
 
-    users = df.user.unique()
-    rng.shuffle(users)
+    for _, user_df in df.groupby("user"):
+        user_df = user_df.sort_values("timestamp")
 
-    n_train = int(len(users) * train_frac)
-    users_train = set(users[:n_train])
-    users_test = set(users[n_train:])
+        n_train = int(len(user_df) * train_frac)
 
-    train_df = df[df.user.isin(users_train)].reset_index(drop=True)
-    test_df = df[df.user.isin(users_test)].reset_index(drop=True)
+        train_parts.append(user_df.iloc[:n_train])
+        test_parts.append(user_df.iloc[n_train:])
+
+    train_df = pd.concat(train_parts).reset_index(drop=True)
+
+    test_df = pd.concat(test_parts).reset_index(drop=True)
 
     return train_df, test_df
 

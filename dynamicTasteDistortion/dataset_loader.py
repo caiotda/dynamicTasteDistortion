@@ -259,6 +259,17 @@ def get_steam_df(size):
     return process_steam_df(raw_df)
 
 
+def load_df(data_type, size):
+    if data_type == "ml":
+        return get_ml_df(size)
+    elif data_type == "yelp":
+        return get_yelp_df(size)
+    elif data_type == "steam":
+        return get_steam_df(size)
+    else:
+        raise ValueError(f"Invalid data type: {data_type}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Load and preprocess datasets.")
     parser.add_argument(

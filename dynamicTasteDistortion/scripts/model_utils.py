@@ -1,6 +1,7 @@
 import ast
 import pickle
 import os
+import torch
 
 import numpy as np
 import pandas as pd
@@ -11,13 +12,46 @@ from itertools import product
 
 from tqdm import tqdm
 
+from bprMf.model import BaseModel
+
 
 from dynamicTasteDistortion.simulationConstants import (
     RESULTS_PATH,
     MODEL_ARTIFACTS_PATH,
+    USER_COL,
+    ITEM_COL,
 )
 
 MODEL_NAME_TO_CLASS_NAME = {"NMF": NMF, "SVD++": SVDpp}
+
+
+class MostPopularRecommender(BaseModel):
+
+    def __init__(self, df):
+        super().__init__()
+        n_items = df.item.nunique()
+
+        pop_df = df.groupby(ITEM_COL).agg(
+            popularity=(USER_COL, lambda group: len(group) / n_items)
+        )
+
+        max_item = pop_df.index.max()
+        pop_tensor = torch.zeros(max_item + 1, dtype=torch.float32)
+
+        pop_tensor[torch.tensor(pop_df.index.values)] = torch.tensor(
+            pop_df["popularity"].values, dtype=torch.float32
+        )
+        self.item_2_popularity = pop_tensor
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.item_2_popularity = self.item_2_popularity.to(self.device)
+
+    def fit(self, train_df, debug):
+        # No training needed for this model, as it relies solely on item popularity.
+        pass
+
+    def forward(self, users, items):
+        # score depends only on item popularity
+        return self.item_2_popularity[items]
 
 
 class ModelChooser:

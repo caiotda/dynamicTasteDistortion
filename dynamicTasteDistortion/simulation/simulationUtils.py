@@ -65,8 +65,14 @@ def click_model(predictions):
 
 
 def get_feedback_for_predictions(oracle_matrix, predictions):
-    oracle_tensor = pandas_df_to_sparse_tensor(oracle_matrix)
-    preferences_matrix = map_prediction_to_preferences(oracle_tensor, predictions)
+    # Simulates feedback only through click position.
+    if oracle_matrix is None:
+        preferences_matrix = torch.ones_like(
+            predictions, dtype=torch.int8, device=device
+        )
+    else:
+        oracle_tensor = pandas_df_to_sparse_tensor(oracle_matrix)
+        preferences_matrix = map_prediction_to_preferences(oracle_tensor, predictions)
     examined_matrix = click_model(predictions)
 
     should_click = 2 * (preferences_matrix & examined_matrix) - 1
