@@ -60,6 +60,7 @@ class Simulator:
             if oracle_matrix is not None
             else None
         )
+        self.use_random_rec = True if model is None else False
         self.model = model
         self.initial_date = initial_date
 
@@ -229,7 +230,6 @@ class Simulator:
         boostrapped_df["constant"] = 1.0
         maces = []
         kl_divs = []
-        use_random_rec = False
 
         for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
             #     mask = torch.ones((self.n_users, self.n_items), dtype=torch.float32)
@@ -243,7 +243,7 @@ class Simulator:
             round_df, round_rec = self.simulate_user_feedback(
                 # mask=mask, feedback_from_bootstrap=use_random_rec, k=k
                 mask=None,
-                feedback_from_bootstrap=use_random_rec,
+                feedback_from_bootstrap=self.use_random_rec,
                 k=k,
             )
 
@@ -272,7 +272,7 @@ class Simulator:
             )
             kl_divs.append(iteration_avg_kl_div)
             maces.append(iteration_mace)
-            if round_idx % L == 0 and not use_random_rec:
+            if round_idx % L == 0 and not self.use_random_rec:
                 print("retraining model...")
                 _ = self.model.fit(boostrapped_df, debug=False)
 

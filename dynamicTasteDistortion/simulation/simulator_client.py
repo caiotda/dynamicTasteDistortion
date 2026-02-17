@@ -44,7 +44,7 @@ def main():
     with open(args.exp_file, "r") as f:
         cfg = yaml.safe_load(f)
 
-    model_type = cfg["model"]
+    model_type = cfg.get("model", "bpr")
     data_type = cfg["data"]
     size = cfg["size"]
     file_size = input_size_to_file_name[size]
@@ -68,7 +68,7 @@ def main():
     n_users = oracle_matrix[USER_COL].max() + 1
     n_items = oracle_matrix[ITEM_COL].max() + 1
 
-    if model_type is None or model_type == "bpr":
+    if model_type == "bpr":
         model = bprMFWithClickDebiasing(
             num_users=n_users,
             num_items=n_items,
@@ -78,11 +78,13 @@ def main():
             dev=device,
             lr=1e-3,
         )
-    else:
+    elif model_type == "most_popular":
         print(f"Loading {data_type}_{file_size} dataset to fit Most Popular model...")
         df = load_df(data_type, size)
         processed_df, _, _ = standardize_ids(df)
         model = MostPopularRecommender(processed_df)
+    else:
+        model = None
 
     userToExpDistribution = {
         user: expon(scale=row["median_timestamp_diff"])
