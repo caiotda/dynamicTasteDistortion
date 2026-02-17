@@ -9,4 +9,4 @@ model: bpr
 
 use_oracle_matrix: y
 
-exp_name: bpr_rec_no_oracle_matrix_with_click_position_bias
+exp_name: bpr_rec_with_oracle_matrix_with_click_position_bias
