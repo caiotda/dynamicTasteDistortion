@@ -9,13 +9,53 @@ from dynamicTasteDistortion.scripts.bootstrapping_utils import (
 from dynamicTasteDistortion.simulationConstants import (
     MODEL_ARTIFACTS_PATH,
     SIMULATION_PATH,
+    RESULTS_PATH,
+    input_size_to_file_name,
 )
 
 import os
-
+from pathlib import Path
 
 import pandas as pd
 import pickle
+
+import yaml
+
+
+def read_experiment(exp_file):
+    with open(exp_file, "r") as f:
+        cfg = yaml.safe_load(f)
+    return cfg
+
+
+def read_metrics(cfg_file):
+    data_type = cfg_file["data"]
+    size = cfg_file["size"]
+    file_size = input_size_to_file_name[size]
+
+    rounds = int(cfg_file["rounds"])
+    num_rounds_per_eval = int(cfg_file["num_rounds_per_eval"])
+    num_users = int(cfg_file["num_users"])
+
+    exp_name = cfg_file.get("exp_name", "default_experiment")
+
+    base_artifacts_path = (
+        Path(RESULTS_PATH)
+        / f"{data_type}_{file_size}"
+        / "simulated"
+        / f"exp={exp_name}"
+        / f"rounds={rounds}"
+        / f"users={num_users}"
+        / f"eval_every={num_rounds_per_eval}"
+    )
+
+    file_name = base_artifacts_path / "maces.pkl"
+    maces = pd.read_pickle(file_name)
+
+    # Read maces pickle file
+    file_name = base_artifacts_path / "kl_divs.pkl"
+    kl_divs = pd.read_pickle(file_name)
+    return maces, kl_divs
 
 
 def load_bootstrapped_clicks(data_type, size, num_users):
