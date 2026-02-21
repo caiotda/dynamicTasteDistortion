@@ -9,6 +9,10 @@ def apply_rolling_avg(metric, window_size=10):
 
 
 def plot_metrics_smoothed(ax, metric, model_name, metric_name, step, window_size=10):
+
+    # if ax is None, create it
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 5))
     metric_ma = apply_rolling_avg(metric, window_size)
 
     ax.plot(metric_ma, label=f"{metric_name} (Moving average w = {window_size})")
@@ -20,7 +24,7 @@ def plot_metrics_smoothed(ax, metric, model_name, metric_name, step, window_size
             [metric[i] for i in idx],
             color="red",
             zorder=4,
-            s=2,
+            s=3,
             alpha=0.5,
             label="Model Retrain Point",
         )
