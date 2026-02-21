@@ -6,4 +6,5 @@ __pycache__/
 /dynamicTasteDistortion/artifacts/
 sandbox*
 /experiment_analysis.ipynb
-
+*.html
+*.log
