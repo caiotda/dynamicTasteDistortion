@@ -228,6 +228,7 @@ class Simulator:
 
         boostrapped_df = self.click_matrix.copy()
         boostrapped_df["constant"] = 1.0
+        H_0 = boostrapped_df
         maces = []
         kl_divs = []
 
@@ -246,9 +247,10 @@ class Simulator:
                 feedback_from_bootstrap=self.use_random_rec,
                 k=k,
             )
+            boostrapped_df = pd.concat([boostrapped_df, round_df], ignore_index=True)
 
             user_history_tensor = build_user_genre_history_distribution(
-                boostrapped_df,
+                H_0,
                 self.p_g_i,
                 n_users=self.n_users,
                 n_items=self.n_items,
@@ -275,11 +277,11 @@ class Simulator:
             if round_idx % L == 0 and not self.use_random_rec:
                 print("retraining model...")
                 _ = self.model.fit(boostrapped_df, debug=False)
+                boostrapped_df = round_df
 
-            if round_idx % 100 == 0:
-                boostrapped_df.to_csv(
-                    f"{self.base_artifacts_path}/simulated_recommendation_round_{round_idx}.csv"
-                )
-            boostrapped_df = pd.concat([boostrapped_df, round_df], ignore_index=True)
+            # if round_idx % 100 == 0:
+            #     boostrapped_df.to_csv(
+            #         f"{self.base_artifacts_path}/simulated_recommendation_round_{round_idx}.csv"
+            #     )
 
         return boostrapped_df, maces, kl_divs

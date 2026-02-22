@@ -109,7 +109,9 @@ def main():
         base_artifacts_path=base_artifacts_path,
         ignore_oracle_matrix=not use_oracle_matrix,
     )
-    simulated_df, maces, kl_divs = sim.simulate(L=num_rounds_per_eval, rounds=rounds)
+    simulated_df, maces, kl_divs = sim.simulate(
+        L=num_rounds_per_eval, rounds=rounds, k=20
+    )
 
     print(f"Done! Saving simulated interactions...")
     simulated_df.to_pickle(base_artifacts_path / "simulated_interactions.pkl")
