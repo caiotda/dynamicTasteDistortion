@@ -233,17 +233,16 @@ class Simulator:
         kl_divs = []
 
         for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
-            #     mask = torch.ones((self.n_users, self.n_items), dtype=torch.float32)
-            #     seen = boostrapped_df[boostrapped_df["relevant"] == 1.0][
-            #         [USER_COL, ITEM_COL]
-            #     ]
-            #     user_idx = torch.tensor(seen[USER_COL].astype(int).values, dtype=torch.long)
-            #     item_idx = torch.tensor(seen[ITEM_COL].astype(int).values, dtype=torch.long)
+            mask = torch.ones((self.n_users, self.n_items), dtype=torch.float32)
+            seen = boostrapped_df[boostrapped_df["relevant"] == 1.0][
+                [USER_COL, ITEM_COL]
+            ]
+            user_idx = torch.tensor(seen[USER_COL].astype(int).values, dtype=torch.long)
+            item_idx = torch.tensor(seen[ITEM_COL].astype(int).values, dtype=torch.long)
 
-            #     mask[user_idx, item_idx] = -1.0
+            mask[user_idx, item_idx] = -1.0
             round_df, round_rec = self.simulate_user_feedback(
-                # mask=mask, feedback_from_bootstrap=use_random_rec, k=k
-                mask=None,
+                mask=mask,
                 feedback_from_bootstrap=self.use_random_rec,
                 k=k,
             )
