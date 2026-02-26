@@ -5,7 +5,7 @@ rounds: 40000
 num_rounds_per_eval: 50
 num_users: 1000
 
-model: popularity
+model: most_popular
 
 use_oracle_matrix: y
 

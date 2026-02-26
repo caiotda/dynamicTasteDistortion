@@ -273,9 +273,10 @@ class Simulator:
             )
             kl_divs.append(iteration_avg_kl_div)
             maces.append(iteration_mace)
-            if round_idx % L == 0 and not self.use_random_rec:
-                print("retraining model...")
-                _ = self.model.fit(boostrapped_df, debug=False)
+            if round_idx % L == 0:
+                if not self.use_random_rec:
+                    print("retraining model...")
+                    _ = self.model.fit(boostrapped_df, debug=False)
                 boostrapped_df = round_df
 
             # if round_idx % 100 == 0:
