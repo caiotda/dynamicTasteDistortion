@@ -24,7 +24,7 @@ from dynamicTasteDistortion.dataset_loader import load_df
 
 from scipy.stats import expon
 
-from bprMf.bpr_mf import bprMFWithClickDebiasing
+from bprMf.bpr_mf import bprMFWithClickDebiasing, bprMf
 from dynamicTasteDistortion.scripts.model_utils import MostPopularRecommender
 from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 import yaml
@@ -70,6 +70,16 @@ def main():
 
     if model_type == "bpr":
         model = bprMFWithClickDebiasing(
+            num_users=n_users,
+            num_items=n_items,
+            factors=30,
+            n_epochs=1,
+            reg_lambda=5e-4,
+            dev=device,
+            lr=1e-3,
+        )
+    elif model_type == "bpr_classic":
+        model = bprMf(
             num_users=n_users,
             num_items=n_items,
             factors=30,
