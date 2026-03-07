@@ -1,3 +1,4 @@
+from dynamicTasteDistortion.scripts.metrics_utils import remove_outliers
 from dynamicTasteDistortion.scripts.model_utils import (
     choose_best_model,
 )
@@ -28,7 +29,7 @@ def read_experiment(exp_file):
     return cfg
 
 
-def read_metrics(cfg_file):
+def read_metrics(cfg_file, should_remove_outliers=False):
     data_type = cfg_file["data"]
     size = cfg_file["size"]
     file_size = input_size_to_file_name[size]
@@ -55,6 +56,9 @@ def read_metrics(cfg_file):
     # Read maces pickle file
     file_name = base_artifacts_path / "kl_divs.pkl"
     kl_divs = pd.read_pickle(file_name)
+    if should_remove_outliers:
+        maces = remove_outliers(maces)
+        kl_divs = remove_outliers(kl_divs)
     return maces, kl_divs
 
 

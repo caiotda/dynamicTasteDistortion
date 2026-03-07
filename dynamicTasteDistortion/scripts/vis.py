@@ -2,10 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from dynamicTasteDistortion.ioUtils import read_experiment, read_metrics
-
-
-def apply_rolling_avg(metric, window_size=10):
-    return pd.Series(metric).rolling(window=window_size).mean()
+from dynamicTasteDistortion.scripts.metrics_utils import apply_rolling_avg
 
 
 def plot_metrics_smoothed(ax, metric, model_name, metric_name, step, window_size=10):
@@ -51,6 +48,7 @@ def plot_metric_comparison(
     graph="line",  # "line" or "box"
     window_size=10,
     plot_retrain_points=False,
+    should_remove_outliers=False,
 ):
     metric_map = {
         "mace": 0,
@@ -70,11 +68,15 @@ def plot_metric_comparison(
     # Baseline
     baseline_config = read_experiment(baseline_exp_file)
     L = baseline_config["num_rounds_per_eval"]
-    baseline_metric = read_metrics(baseline_config)[metric_index]
+    baseline_metric = read_metrics(baseline_config, should_remove_outliers)[
+        metric_index
+    ]
 
     # Comparison
     comparison_config = read_experiment(comparison_exp_file)
-    comparison_metric = read_metrics(comparison_config)[metric_index]
+    comparison_metric = read_metrics(comparison_config, should_remove_outliers)[
+        metric_index
+    ]
 
     if graph == "box":
         plot_metric_boxplot(
@@ -106,7 +108,8 @@ def plot_metric_comparison(
             window_size=window_size,
             step=None,
         )
-
+    if should_remove_outliers:
+        title += " (Outliers Removed)"
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     fig.suptitle(title)
     plt.show()
