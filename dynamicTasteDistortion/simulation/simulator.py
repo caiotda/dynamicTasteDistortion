@@ -1,5 +1,6 @@
 import torch
 import os
+import copy
 
 import numpy as np
 import pandas as pd
@@ -231,6 +232,7 @@ class Simulator:
         H_0 = boostrapped_df
         maces = []
         kl_divs = []
+        initial_model = copy.deepcopy(self.model)
 
         for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
             mask = torch.ones((self.n_users, self.n_items), dtype=torch.float32)
@@ -276,6 +278,8 @@ class Simulator:
             if round_idx % L == 0:
                 if not self.use_random_rec:
                     print("retraining model...")
+                    self.model = copy.deepcopy(initial_model)
+                    self.model.to(initial_model.device)
                     _ = self.model.fit(boostrapped_df, debug=False)
                 boostrapped_df = round_df
 
