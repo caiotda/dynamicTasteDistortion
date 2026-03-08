@@ -50,6 +50,7 @@ def main():
     file_size = input_size_to_file_name[size]
 
     exp_name = cfg.get("exp_name", "default_experiment")
+    calibration_type = cfg.get("calibrate", None)
 
     use_oracle_matrix = True if cfg.get("use_oracle_matrix", "n") == "y" else False
 
@@ -118,6 +119,7 @@ def main():
         bootstrapped_df=bootstrapped_df,
         base_artifacts_path=base_artifacts_path,
         ignore_oracle_matrix=not use_oracle_matrix,
+        calibration_type=calibration_type,
     )
     simulated_df, maces, kl_divs = sim.simulate(
         L=num_rounds_per_eval, rounds=rounds, k=20
