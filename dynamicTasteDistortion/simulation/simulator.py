@@ -264,7 +264,7 @@ class Simulator:
                 weight_col="rating",  # Prediction
             )
             iteration_mace = mace(
-                rec_df=round_df.groupby(USER_COL).agg(list).reset_index(),
+                rec_df=round_df,
                 p_g_u=user_history_tensor,
                 p_g_i=self.p_g_i,
             )
