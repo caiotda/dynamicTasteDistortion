@@ -206,9 +206,8 @@ class Simulator:
         )
         return bootstrapped_df
 
-    def _recommend(self, users_history, k):
+    def _recommend(self, users_history, k, mask=None):
 
-        mask = self._mask_previously_seen_items(users_history)
         if self.use_random_rec:
             n_users = self.users.max() + 1
             rec, score = random_rec(self.items, n_users, k)
@@ -280,8 +279,8 @@ class Simulator:
         )
 
         for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
-
-            rec, score = self._recommend(users_history=boostrapped_df, k=k)
+            mask = self._mask_previously_seen_items(boostrapped_df)
+            rec, score = self._recommend(users_history=H_0, k=k, mask=mask)
 
             round_df = self.simulate_user_feedback(
                 rec=rec,
