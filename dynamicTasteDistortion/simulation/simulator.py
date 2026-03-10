@@ -217,11 +217,6 @@ class Simulator:
             )
 
         if self.calibration_type is not None:
-            users_history["genres"] = (
-                users_history["item"]
-                .map(self.item2genreMap)
-                .apply(lambda x: x if isinstance(x, list) else [UNKNOWN_GENRE])
-            )
             rec, score = rerank_by_calibration(
                 recs=rec,
                 scores=score,
@@ -266,6 +261,11 @@ class Simulator:
         boostrapped_df = self.click_matrix.copy()
         boostrapped_df["constant"] = 1.0
         H_0 = boostrapped_df
+        H_0["genres"] = (
+            H_0["item"]
+            .map(self.item2genreMap)
+            .apply(lambda x: x if isinstance(x, list) else [UNKNOWN_GENRE])
+        )
         maces = []
         kl_divs = []
         initial_model = copy.deepcopy(self.model)
