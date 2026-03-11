@@ -106,19 +106,18 @@ class Simulator:
 
     def simulate_user_feedback(self, rec, score):
         """
-        Simulates user feedback for a batch of users by recommending k items and mapping the recommendations to feedback.
+        Simulates user feedback for a batch of recommendations.
 
         Args:
-            rec (torch.Tensor): Tensor containing the ordered recommendation.
-            score (torch.Tensor): Tensor containing the ordered score of each item in the recommendation.
+            rec (torch.Tensor): Ordered recommendations, shape (n_users, k).
+            score (torch.Tensor): Corresponding scores, shape (n_users, k).
 
         Returns:
-            pd.DataFrame: A dataframe containing the simulated interactions with the following schema:
-                - user: User indices.
-                - item: Recommended item indices.
-                - click: Feedback values (1 for positive, 0 for negative, NaN for no interaction).
-                - clicked_at: Click positions in the recommendation list (NaN if no click occurred).
-                - timestamp: Interaction timestamps (NaN if no interaction occurred).
+            interaction_df (pd.DataFrame): Simulated interactions with columns:
+                user, item, relevant, clicked_at, timestamp, rating, constant.
+                clicked_at and timestamp are NaN for non-relevant items.
+            rec_df (pd.DataFrame): Full recommendation slate with columns:
+                user, item, rating (score). One row per (user, item) pair.
         """
 
         if self.ignore_oracle_matrix:
@@ -166,7 +165,18 @@ class Simulator:
         interaction_df.loc[interaction_df["relevant"] != 1.0, "clicked_at"] = np.nan
         interaction_df.loc[interaction_df["relevant"] != 1.0, "timestamp"] = np.nan
         interaction_df["constant"] = 1.0  # For calibration purposes
-        return interaction_df
+
+        n_users = rec.shape[0]
+        k = rec.shape[1]
+        rec_df = pd.DataFrame(
+            {
+                USER_COL: torch.arange(n_users).repeat_interleave(k).numpy(),
+                ITEM_COL: rec.reshape(-1).cpu().numpy(),
+                "rating": score.reshape(-1).cpu().numpy(),
+            }
+        )
+
+        return interaction_df, rec_df
 
     def bootstrap_clicks(self, k=20, bootstrapping_rounds=5):
         """
@@ -282,20 +292,20 @@ class Simulator:
             mask = self._mask_previously_seen_items(boostrapped_df)
             rec, score = self._recommend(users_history=H_0, k=k, mask=mask)
 
-            round_df = self.simulate_user_feedback(
+            round_df, rec_df = self.simulate_user_feedback(
                 rec=rec,
                 score=score,
             )
 
             rec_genre_distribution_tensor = build_user_genre_history_distribution(
-                round_df,
-                self.p_g_i,
+                df=rec_df,
+                p_g_i=self.p_g_i,
                 n_users=self.n_users,
                 n_items=self.n_items,
                 weight_col="rating",
             )
             iteration_mace = mace(
-                rec_df=round_df,
+                rec_df=rec_df,
                 p_g_u=user_history_tensor,
                 p_g_i=self.p_g_i,
                 k=self.top_k_for_evaluation,
