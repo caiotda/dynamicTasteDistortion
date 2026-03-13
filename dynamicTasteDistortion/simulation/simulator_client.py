@@ -51,6 +51,16 @@ def main():
 
     exp_name = cfg.get("exp_name", "default_experiment")
     calibration_type = cfg.get("calibrate", None)
+    calibration_type = (
+        str.lower(calibration_type) if calibration_type is not None else None
+    )
+    assert calibration_type in [
+        None,
+        "rating",
+        "constant",
+        "linear_time",
+        "exponential_time",
+    ], "Invalid calibration type specified in config."
 
     use_oracle_matrix = True if cfg.get("use_oracle_matrix", "n") == "y" else False
 

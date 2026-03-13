@@ -6,7 +6,7 @@ num_rounds_per_eval: 5
 num_users: 1000
 
 model: bpr_classic
-calibrate: steck
+calibrate: constant
 
 use_oracle_matrix: y
 exp_name: bpr_classic_calibrated

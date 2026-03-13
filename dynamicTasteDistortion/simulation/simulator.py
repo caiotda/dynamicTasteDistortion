@@ -13,8 +13,9 @@ from calibratedRecs.calibrationUtils import (
     build_user_genre_history_distribution,
 )
 
+from calibratedRecs.weight_functions import get_linear_time_weight_rating
 from calibratedRecs.reranking_utils import rerank_by_calibration
-
+from calibratedRecs.mappings import CALIBRATION_MODE_TO_COL_NAME
 from calibratedRecs.metrics import mace, get_avg_kl_div
 from dynamicTasteDistortion.simulation.simulationUtils import (
     random_rec,
@@ -24,6 +25,8 @@ from dynamicTasteDistortion.simulationConstants import (
     USER_COL,
     ITEM_COL,
     GENRES_COL,
+    TIMESTAMP_COL,
+    RATING_COL,
 )
 from dynamicTasteDistortion.simulation.tensorUtils import (
     get_matrix_coordinates,
@@ -54,7 +57,6 @@ class Simulator:
         self.top_k_for_evaluation = 10
         self.calibration_type = calibration_type
         self.timestamp_distribution = user_timestamp_distribution
-        # TODO: isso precisa ser meio refatorado.
         self.ignore_oracle_matrix = ignore_oracle_matrix
         self.user_idx_to_id = {
             idx: user_id
@@ -66,6 +68,11 @@ class Simulator:
             oracle_matrix[oracle_matrix[USER_COL].isin(users)]
             if oracle_matrix is not None
             else None
+        )
+        self.item2genreMap = (
+            self.oracle_matrix[[ITEM_COL, GENRES_COL]]
+            .set_index(ITEM_COL)[GENRES_COL]
+            .to_dict()
         )
         self.use_random_rec = True if model is None else False
         self.model = model
@@ -86,17 +93,19 @@ class Simulator:
             self.click_matrix = self.bootstrap_clicks(
                 k=100, bootstrapping_rounds=bootstrapping_rounds
             )
-
-        self.item2genreMap = (
-            self.oracle_matrix[[ITEM_COL, GENRES_COL]]
-            .set_index(ITEM_COL)[GENRES_COL]
-            .to_dict()
+        self.click_matrix[GENRES_COL] = (
+            self.click_matrix[ITEM_COL]
+            .map(self.item2genreMap)
+            .apply(
+                lambda x: tuple(x) if isinstance(x, list) else tuple([UNKNOWN_GENRE])
+            )
         )
-
-        ratings_df = preprocess_dataframe_for_calibration(self.oracle_matrix)
-        self.n_items = ratings_df[ITEM_COL].max() + 1
-        self.n_users = ratings_df[USER_COL].max() + 1
-        self.p_g_i = build_item_genre_distribution_tensor(ratings_df, self.n_items)
+        self.click_matrix = preprocess_dataframe_for_calibration(self.click_matrix)
+        self.n_items = self.click_matrix[ITEM_COL].max() + 1
+        self.n_users = self.click_matrix[USER_COL].max() + 1
+        self.p_g_i = build_item_genre_distribution_tensor(
+            self.click_matrix, self.n_items
+        )
 
         self.base_artifacts_path = base_artifacts_path
         if base_artifacts_path is not None and not os.path.exists(
@@ -152,12 +161,12 @@ class Simulator:
         interaction_df = pd.DataFrame(
             entries,
             columns=[
-                "user",
-                "item",
+                USER_COL,
+                ITEM_COL,
                 "relevant",
                 "clicked_at",
-                "timestamp",
-                "rating",
+                TIMESTAMP_COL,
+                RATING_COL,
                 "constant",
             ],
         )
@@ -192,7 +201,6 @@ class Simulator:
         """
 
         n_users = self.users.max() + 1
-        rec, score = random_rec(self.items, n_users, k)
 
         bootstrapped_df = pd.DataFrame(
             [],
@@ -207,7 +215,8 @@ class Simulator:
             ],
         )
         for _ in range(bootstrapping_rounds):
-            round_df = self.simulate_user_feedback(rec=rec, score=score, k=k)
+            rec, score = random_rec(self.items, n_users, k)
+            round_df, _ = self.simulate_user_feedback(rec=rec, score=score, k=k)
             bootstrapped_df = pd.concat([bootstrapped_df, round_df], ignore_index=True)
 
         bootstrapped_df["relevant"] = bootstrapped_df["relevant"].fillna(0).astype(int)
@@ -235,6 +244,7 @@ class Simulator:
                 n_items=self.n_items,
                 calib_k=self.top_k_for_evaluation,
                 item2genreMap=self.item2genreMap,
+                calibration_type=self.calibration_type,
             )
         return rec, score
 
@@ -269,13 +279,10 @@ class Simulator:
         """
 
         boostrapped_df = self.click_matrix.copy()
-        boostrapped_df["constant"] = 1.0
-        H_0 = boostrapped_df
-        H_0["genres"] = (
-            H_0["item"]
-            .map(self.item2genreMap)
-            .apply(lambda x: x if isinstance(x, list) else [UNKNOWN_GENRE])
-        )
+        weight_col = CALIBRATION_MODE_TO_COL_NAME.get(self.calibration_type, "constant")
+        H_0 = boostrapped_df.copy()
+        # Filter H_0 to include only interacted items.
+        H_0 = H_0[H_0["relevant"] == 1.0]
         maces = []
         kl_divs = []
         initial_model = copy.deepcopy(self.model)
@@ -285,7 +292,7 @@ class Simulator:
             self.p_g_i,
             n_users=self.n_users,
             n_items=self.n_items,
-            weight_col="constant",
+            weight_col=weight_col,
         )
 
         for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
