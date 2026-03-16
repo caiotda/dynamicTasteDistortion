@@ -1,0 +1,12 @@
+size: s
+data: ml
+
+rounds: 500
+num_rounds_per_eval: 5
+num_users: 1000
+
+model: bpr
+calibrate: constant
+
+use_oracle_matrix: y
+exp_name: bpr_debiased_calibrated

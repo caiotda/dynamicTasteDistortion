@@ -77,7 +77,7 @@ def main():
         model=None,
         initial_date=0.0,
         user_timestamp_distribution=userToExpDistribution,
-        bootstrapping_rounds=10,
+        num_interactions_bootstrapped=500_000,
     )
     print(f"Done! Saving bootstrapped clicks...")
     bootstrapped_clicks_path = f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_bootstrapped.pkl"

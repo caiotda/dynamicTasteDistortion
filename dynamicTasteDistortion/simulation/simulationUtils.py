@@ -109,7 +109,16 @@ def get_candidate_items(D):
     return mask_from_df
 
 
-def random_rec(candidates, n_users, k):
-    ids = torch.randint(size=(n_users, k), low=0, high=len(candidates), device=device)
+def random_rec(candidates, n_users, k, mask=None):
+    if mask is not None:
+        weights = (mask == 1).float()
+        # Previously seen items are assigned a probabilty of 0 to be recommended,
+        # while unseen items have a probability of 1.
+        ids = torch.multinomial(weights, num_samples=k, replacement=False)
+    else:
+        ids = torch.randint(
+            size=(n_users, k), low=0, high=len(candidates), device=device
+        )
+
     scores = torch.rand(size=(n_users, k), device=device)
     return ids, scores

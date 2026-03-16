@@ -44,12 +44,12 @@ class Simulator:
         initial_date,
         user_timestamp_distribution,
         base_artifacts_path=None,
-        bootstrapping_rounds=10,
+        num_interactions_bootstrapped=1_000_000,
         bootstrapped_df=None,
         ignore_oracle_matrix=False,
         calibration_type=None,
     ):
-        device = (
+        self.device = (
             model.device
             if model is not None
             else torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -69,6 +69,8 @@ class Simulator:
             if oracle_matrix is not None
             else None
         )
+        self.n_users = self.oracle_matrix[USER_COL].max() + 1
+        self.n_items = self.oracle_matrix[ITEM_COL].max() + 1
         self.item2genreMap = (
             self.oracle_matrix[[ITEM_COL, GENRES_COL]]
             .set_index(ITEM_COL)[GENRES_COL]
@@ -81,17 +83,17 @@ class Simulator:
         if self.initial_date is None:
             self.initial_date = pd.Timestamp.now().timestamp()
 
-        self.users = torch.tensor(users, device=device)
+        self.users = torch.tensor(users, device=self.device)
 
         self.items = torch.tensor(
-            list(oracle_matrix[ITEM_COL].drop_duplicates()), device=device
+            list(oracle_matrix[ITEM_COL].drop_duplicates()), device=self.device
         )
 
         if (bootstrapped_df is not None) and (not bootstrapped_df.empty):
             self.click_matrix = bootstrapped_df
         else:
             self.click_matrix = self.bootstrap_clicks(
-                k=100, bootstrapping_rounds=bootstrapping_rounds
+                k=100, num_interactions_bootstrapped=num_interactions_bootstrapped
             )
         self.click_matrix[GENRES_COL] = (
             self.click_matrix[ITEM_COL]
@@ -101,8 +103,6 @@ class Simulator:
             )
         )
         self.click_matrix = preprocess_dataframe_for_calibration(self.click_matrix)
-        self.n_items = self.click_matrix[ITEM_COL].max() + 1
-        self.n_users = self.click_matrix[USER_COL].max() + 1
         self.p_g_i = build_item_genre_distribution_tensor(
             self.click_matrix, self.n_items
         )
@@ -171,8 +171,7 @@ class Simulator:
             ],
         )
 
-        interaction_df.loc[interaction_df["relevant"] != 1.0, "clicked_at"] = np.nan
-        interaction_df.loc[interaction_df["relevant"] != 1.0, "timestamp"] = np.nan
+        interaction_df = interaction_df[interaction_df["relevant"] == 1.0]
         interaction_df["constant"] = 1.0  # For calibration purposes
 
         n_users = rec.shape[0]
@@ -187,16 +186,15 @@ class Simulator:
 
         return interaction_df, rec_df
 
-    def bootstrap_clicks(self, k=20, bootstrapping_rounds=5):
+    def bootstrap_clicks(self, k=20, num_interactions_bootstrapped=500_000):
         """
         Given unique users and unique items, recommend up to k items to every user
         using a preference matrix as a relevancy model and using a click model
         to simulate probability of user examinating an item.
 
-        Feedback signal will be fed to the D matrix.
-
-        In order to ensure enough feedback data to train a model, we run the boostrap process for a total of an arbitrary number
-        of rounds, using the recommend function to generate recommendations and simulating the feedbacks.
+        In order to ensure enough feedback data to train a model, we run the boostrap process
+        until we have at least num_interactions_bootstrapped interactions, which is a
+        hyperparameter that can be set when initializing the Simulator.
 
         """
 
@@ -214,15 +212,18 @@ class Simulator:
                 "constant",
             ],
         )
-        for _ in range(bootstrapping_rounds):
-            rec, score = random_rec(self.items, n_users, k)
-            round_df, _ = self.simulate_user_feedback(rec=rec, score=score, k=k)
-            bootstrapped_df = pd.concat([bootstrapped_df, round_df], ignore_index=True)
-
-        bootstrapped_df["relevant"] = bootstrapped_df["relevant"].fillna(0).astype(int)
-        bootstrapped_df["clicked_at"] = (
-            bootstrapped_df["clicked_at"].fillna(-1).astype(int)
-        )
+        with tqdm(
+            total=num_interactions_bootstrapped, desc="Bootstrapping clicks"
+        ) as pbar:
+            while len(bootstrapped_df) < num_interactions_bootstrapped:
+                mask = self._mask_previously_seen_items(bootstrapped_df).to(self.device)
+                rec, score = random_rec(self.items, n_users, k, mask)
+                round_df, _ = self.simulate_user_feedback(rec=rec, score=score)
+                round_positives = len(round_df)
+                bootstrapped_df = pd.concat(
+                    [bootstrapped_df, round_df], ignore_index=True
+                )
+                pbar.update(round_positives)
         return bootstrapped_df
 
     def _recommend(self, users_history, k, mask=None):
@@ -250,7 +251,7 @@ class Simulator:
 
     def _mask_previously_seen_items(self, users_history):
         mask = torch.ones((self.n_users, self.n_items), dtype=torch.float32)
-        seen = users_history[users_history["relevant"] == 1.0][[USER_COL, ITEM_COL]]
+        seen = users_history[[USER_COL, ITEM_COL]]
         user_idx = torch.tensor(seen[USER_COL].astype(int).values, dtype=torch.long)
         item_idx = torch.tensor(seen[ITEM_COL].astype(int).values, dtype=torch.long)
 
@@ -281,8 +282,6 @@ class Simulator:
         boostrapped_df = self.click_matrix.copy()
         weight_col = CALIBRATION_MODE_TO_COL_NAME.get(self.calibration_type, "constant")
         H_0 = boostrapped_df.copy()
-        # Filter H_0 to include only interacted items.
-        H_0 = H_0[H_0["relevant"] == 1.0]
         maces = []
         kl_divs = []
         initial_model = copy.deepcopy(self.model)
