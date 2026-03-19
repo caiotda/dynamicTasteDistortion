@@ -51,12 +51,15 @@ class Simulator:
         bootstrapped_df=None,
         ignore_oracle_matrix=False,
         calibration_type=None,
+        preference_update_rate=0,
     ):
         self.device = (
             model.device
             if model is not None
             else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )
+
+        self.preference_update_rate = preference_update_rate
         self.top_k_for_evaluation = 10
         self.calibration_type = calibration_type
         self.timestamp_distribution = user_timestamp_distribution
@@ -146,11 +149,13 @@ class Simulator:
                 torch.tensor(1, device=feedback_matrix.device),
             ),
         )
-        
+
         # Update user preferences after examining recommendations
         self.oracle_matrix = (
             update_preference_matrix(
-                preference_matrix=self.oracle_matrix, examination_matrix=examined_matrix
+                preference_matrix=self.oracle_matrix,
+                examination_matrix=examined_matrix,
+                preference_update_rate=self.preference_update_rate,
             )
             if should_update_preferences
             else self.oracle_matrix
