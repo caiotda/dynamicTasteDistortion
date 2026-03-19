@@ -64,16 +64,29 @@ def click_model(predictions):
     return (lambda_tensor > examination_probability).int()
 
 
-def update_preference_matrix(preference_matrix, examination_matrix, preference_update_rate=0.2):
-    assert preference_matrix.shape == examination_matrix.shape, "Shape mismatch between preference matrix and examination_matrix"
+def update_preference_matrix(
+    preference_matrix, examination_matrix, preference_update_rate=0.2
+):
+    assert (
+        preference_matrix.shape == examination_matrix.shape
+    ), f"Shape mismatch between preference matrix {preference_matrix.shape }and examination_matrix {examination_matrix.shape}"
     preference_matrix_updated = preference_matrix.copy()
-    preferences_to_acquire = (preference_matrix_updated == 0) & (examination_matrix == 1)
+    preferences_to_acquire = (preference_matrix_updated == 0) & (
+        examination_matrix == 1
+    )
     users, items = torch.where(preferences_to_acquire)
 
-    updated_preferences = torch.bernoulli(torch.full_like(preference_matrix_updated[users, items], preference_update_rate, dtype=torch.float32)).int()
+    updated_preferences = torch.bernoulli(
+        torch.full_like(
+            preference_matrix_updated[users, items],
+            preference_update_rate,
+            dtype=torch.float32,
+        )
+    ).int()
     preference_matrix_updated[users, items] = updated_preferences
 
     return preferences_to_acquire
+
 
 def get_candidate_items(D):
 

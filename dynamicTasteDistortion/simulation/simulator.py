@@ -149,7 +149,6 @@ class Simulator:
                 torch.tensor(1, device=feedback_matrix.device),
             ),
         )
-
         # Update user preferences after examining recommendations
         self.oracle_matrix = (
             update_preference_matrix(
