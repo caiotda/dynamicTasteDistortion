@@ -18,8 +18,10 @@ from calibratedRecs.reranking_utils import rerank_by_calibration
 from calibratedRecs.mappings import CALIBRATION_MODE_TO_COL_NAME
 from calibratedRecs.metrics import mace, get_avg_kl_div
 from dynamicTasteDistortion.simulation.simulationUtils import (
+    click_model,
+    map_prediction_to_preferences,
     random_rec,
-    get_feedback_for_predictions,
+    update_preference_matrix,
 )
 from dynamicTasteDistortion.simulationConstants import (
     USER_COL,
@@ -30,6 +32,7 @@ from dynamicTasteDistortion.simulationConstants import (
 )
 from dynamicTasteDistortion.simulation.tensorUtils import (
     get_matrix_coordinates,
+    pandas_df_to_sparse_tensor,
 )
 
 
@@ -113,6 +116,47 @@ class Simulator:
         ):
             os.makedirs(self.base_artifacts_path)
 
+    def get_feedback_for_predictions(self, predictions):
+        # Simulates feedback only through click position.
+        if self.ignore_oracle_matrix:
+            preferences_matrix = torch.ones_like(
+                predictions, dtype=torch.int8, device=self.device
+            )
+            should_update_preferences = False
+        else:
+            should_update_preferences = True
+            oracle_tensor = pandas_df_to_sparse_tensor(self.oracle_matrix)
+            preferences_matrix = map_prediction_to_preferences(
+                oracle_tensor, predictions
+            )
+        examined_matrix = click_model(predictions)
+
+        # Map booleans to {1, -1} values
+        should_click = 2 * (preferences_matrix & examined_matrix) - 1
+
+        interaction = should_click * predictions
+        feedback_matrix = interaction * examined_matrix
+
+        mapped_feedback = torch.where(
+            feedback_matrix == 0,
+            torch.tensor(float("nan"), device=feedback_matrix.device),
+            torch.where(
+                feedback_matrix < 0,
+                torch.tensor(0, device=feedback_matrix.device),
+                torch.tensor(1, device=feedback_matrix.device),
+            ),
+        )
+        
+        # Update user preferences after examining recommendations
+        self.oracle_matrix = (
+            update_preference_matrix(
+                preference_matrix=self.oracle_matrix, examination_matrix=examined_matrix
+            )
+            if should_update_preferences
+            else self.oracle_matrix
+        )
+        return mapped_feedback
+
     def simulate_user_feedback(self, rec, score):
         """
         Simulates user feedback for a batch of recommendations.
@@ -129,10 +173,7 @@ class Simulator:
                 user, item, rating (score). One row per (user, item) pair.
         """
 
-        if self.ignore_oracle_matrix:
-            feedback_matrix = get_feedback_for_predictions(None, rec)
-        else:
-            feedback_matrix = get_feedback_for_predictions(self.oracle_matrix, rec)
+        feedback_matrix = self.get_feedback_for_predictions(rec)
         indices = get_matrix_coordinates(feedback_matrix)
 
         users_indices, click_positions = indices[:, 0].tolist(), indices[:, 1].tolist()
