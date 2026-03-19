@@ -64,34 +64,16 @@ def click_model(predictions):
     return (lambda_tensor > examination_probability).int()
 
 
-def get_feedback_for_predictions(oracle_matrix, predictions):
-    # Simulates feedback only through click position.
-    if oracle_matrix is None:
-        preferences_matrix = torch.ones_like(
-            predictions, dtype=torch.int8, device=device
-        )
-    else:
-        oracle_tensor = pandas_df_to_sparse_tensor(oracle_matrix)
-        preferences_matrix = map_prediction_to_preferences(oracle_tensor, predictions)
-    examined_matrix = click_model(predictions)
+def update_preference_matrix(preference_matrix, examination_matrix, preference_update_rate=0.2):
+    assert preference_matrix.shape == examination_matrix.shape, "Shape mismatch between preference matrix and examination_matrix"
+    preference_matrix_updated = preference_matrix.copy()
+    preferences_to_acquire = (preference_matrix_updated == 0) & (examination_matrix == 1)
+    users, items = torch.where(preferences_to_acquire)
 
-    should_click = 2 * (preferences_matrix & examined_matrix) - 1
+    updated_preferences = torch.bernoulli(torch.full_like(preference_matrix_updated[users, items], preference_update_rate, dtype=torch.float32)).int()
+    preference_matrix_updated[users, items] = updated_preferences
 
-    interaction = should_click * predictions
-    feedback_matrix = interaction * examined_matrix
-
-    mapped_feedback = torch.where(
-        feedback_matrix == 0,
-        torch.tensor(float("nan"), device=feedback_matrix.device),
-        torch.where(
-            feedback_matrix < 0,
-            torch.tensor(0, device=feedback_matrix.device),
-            torch.tensor(1, device=feedback_matrix.device),
-        ),
-    )
-
-    return mapped_feedback
-
+    return preferences_to_acquire
 
 def get_candidate_items(D):
 
