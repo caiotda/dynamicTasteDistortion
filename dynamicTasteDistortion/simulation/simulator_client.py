@@ -68,7 +68,7 @@ def main():
     num_rounds_per_eval = int(cfg["num_rounds_per_eval"])
     num_users = int(cfg["num_users"])
 
-    preference_update_rate = float(cfg.get("preference_update_rate"), 0)
+    preference_update_rate = float(cfg.get("preference_update_rate", 0))
 
     timestamp_distribution = pd.read_csv(
         get_timestamp_behavior_path(data_type, file_size, num_users)
