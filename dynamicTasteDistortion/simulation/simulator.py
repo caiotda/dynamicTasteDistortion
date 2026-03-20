@@ -19,7 +19,6 @@ from calibratedRecs.mappings import CALIBRATION_MODE_TO_COL_NAME
 from calibratedRecs.metrics import mace, get_avg_kl_div
 from dynamicTasteDistortion.simulation.simulationUtils import (
     build_examination_matrix,
-    click_model,
     get_feedback_matrix,
     map_prediction_to_preferences,
     random_rec,

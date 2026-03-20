@@ -55,10 +55,18 @@ def build_examination_matrix(predictions, shape, dev=device):
     examined_predictions = click_model(predictions)
     examined_mask_bipolar = binary_to_bipolar(examined_predictions)
     examined_item_ids = predictions * examined_mask_bipolar
+
+    # Get interacted recommendation items.
     row_indices, col_indices = torch.where(examined_item_ids > 0)
     item_ids = predictions[row_indices, col_indices]
     # item_ids were examined by row_indices users.
     examination_matrix[row_indices, item_ids] = 1.0
+
+    # Flag recommended but not interacted items.
+    row_indices, col_indices = torch.where(examined_item_ids < 0)
+    item_ids = predictions[row_indices, col_indices]
+    # item_ids were examined by row_indices users.
+    examination_matrix[row_indices, item_ids] = -1.0
 
     return examination_matrix
 
@@ -97,6 +105,14 @@ def update_preference_matrix(
     preferences_to_acquire = (preference_matrix_updated == 0) & (
         examination_matrix == 1
     )
+
+    print(f"Examination matrix: {examination_matrix}")
+    print(f"Valores no examination matrix: {examination_matrix.unique()}")
+    
+    # Relevant items that were recommended, but not interacted with.
+    preferences_to_forget = (preference_matrix_updated == 1) & (
+        examination_matrix == -1
+    )
     users, items = torch.where(preferences_to_acquire)
 
     updated_preferences = torch.bernoulli(
@@ -107,6 +123,21 @@ def update_preference_matrix(
         )
     ).to(torch.int64)
     preference_matrix_updated[users, items] = updated_preferences
+
+    # Now we repeat for preferences to forget
+
+    users, items = torch.where(preferences_to_forget)
+
+    updated_preferences = torch.bernoulli(
+        torch.full_like(
+            preference_matrix_updated[users, items],
+            preference_update_rate,
+            dtype=torch.float64,
+        )
+    ).to(torch.int64)
+    # We flip the sorted tensor because torch.bernoulli sets 1 to each entry of the tensor above with preference_update_rate. 
+    # But we're interesetd in setting 0 to them.
+    preference_matrix_updated[users, items] = 1 - updated_preferences
 
     return preference_matrix_updated
 
