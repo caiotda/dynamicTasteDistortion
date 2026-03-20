@@ -4,7 +4,7 @@ from scipy.stats import expon
 import pandas as pd
 
 from dynamicTasteDistortion.simulationConstants import USER_COL, ITEM_COL
-from dynamicTasteDistortion.simulation.tensorUtils import pandas_df_to_sparse_tensor
+from dynamicTasteDistortion.simulation.tensorUtils import binary_to_bipolar, pandas_df_to_sparse_tensor
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 seed = 42
@@ -40,6 +40,29 @@ def map_prediction_to_preferences(oracle_tensor, prediction_tensor):
     return oracle_tensor[indices, prediction_tensor].int()
 
 
+def get_feedback_matrix(predictions, preference_matrix):
+    examined_mask = click_model(predictions)
+    user_model = preference_matrix & examined_mask
+    should_click = binary_to_bipolar(user_model)
+
+    interaction = should_click * predictions
+    feedback_matrix = interaction * examined_mask
+    return feedback_matrix
+
+def build_examination_matrix(predictions, shape, dev=device):
+
+    examination_matrix = torch.zeros(shape, device=dev)
+    examined_predictions = click_model(predictions)
+    examined_mask_bipolar = binary_to_bipolar(examined_predictions)
+    examined_item_ids = predictions * examined_mask_bipolar
+    row_indices, col_indices = torch.where(examined_item_ids > 0)
+    item_ids = predictions[row_indices, col_indices]
+    # item_ids were examined by row_indices users.
+    examination_matrix[row_indices, item_ids] = 1.0
+
+    return examination_matrix
+
+
 def click_model(predictions):
     """
     Simulates a click model tensor of predictions.
@@ -69,8 +92,8 @@ def update_preference_matrix(
 ):
     assert (
         preference_matrix.shape == examination_matrix.shape
-    ), f"Shape mismatch between preference matrix {preference_matrix.shape }and examination_matrix {examination_matrix.shape}"
-    preference_matrix_updated = preference_matrix.copy()
+    ), f"Shape mismatch between preference matrix {preference_matrix.shape } and examination_matrix {examination_matrix.shape}"
+    preference_matrix_updated = preference_matrix.detach().clone()
     preferences_to_acquire = (preference_matrix_updated == 0) & (
         examination_matrix == 1
     )
@@ -80,12 +103,12 @@ def update_preference_matrix(
         torch.full_like(
             preference_matrix_updated[users, items],
             preference_update_rate,
-            dtype=torch.float32,
+            dtype=torch.float64,
         )
-    ).int()
+    ).to(torch.int64)
     preference_matrix_updated[users, items] = updated_preferences
 
-    return preferences_to_acquire
+    return preference_matrix_updated
 
 
 def get_candidate_items(D):

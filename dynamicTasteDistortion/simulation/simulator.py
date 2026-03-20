@@ -18,7 +18,9 @@ from calibratedRecs.reranking_utils import rerank_by_calibration
 from calibratedRecs.mappings import CALIBRATION_MODE_TO_COL_NAME
 from calibratedRecs.metrics import mace, get_avg_kl_div
 from dynamicTasteDistortion.simulation.simulationUtils import (
+    build_examination_matrix,
     click_model,
+    get_feedback_matrix,
     map_prediction_to_preferences,
     random_rec,
     update_preference_matrix,
@@ -31,6 +33,7 @@ from dynamicTasteDistortion.simulationConstants import (
     RATING_COL,
 )
 from dynamicTasteDistortion.simulation.tensorUtils import (
+    binary_to_bipolar,
     get_matrix_coordinates,
     pandas_df_to_sparse_tensor,
 )
@@ -70,18 +73,20 @@ class Simulator:
         }
 
         users = list(self.user_idx_to_id.values())
-        self.oracle_matrix = (
+        filtered_oracle_matrix = (
             oracle_matrix[oracle_matrix[USER_COL].isin(users)]
             if oracle_matrix is not None
             else None
         )
-        self.n_users = self.oracle_matrix[USER_COL].max() + 1
-        self.n_items = self.oracle_matrix[ITEM_COL].max() + 1
+        self.n_users = filtered_oracle_matrix[USER_COL].max() + 1
+        self.n_items = filtered_oracle_matrix[ITEM_COL].max() + 1
         self.item2genreMap = (
-            self.oracle_matrix[[ITEM_COL, GENRES_COL]]
+            filtered_oracle_matrix[[ITEM_COL, GENRES_COL]]
             .set_index(ITEM_COL)[GENRES_COL]
             .to_dict()
         )
+        self.oracle_tensor = pandas_df_to_sparse_tensor(filtered_oracle_matrix)
+
         self.use_random_rec = True if model is None else False
         self.model = model
         self.initial_date = initial_date
@@ -128,17 +133,14 @@ class Simulator:
             should_update_preferences = False
         else:
             should_update_preferences = True
-            oracle_tensor = pandas_df_to_sparse_tensor(self.oracle_matrix)
             preferences_matrix = map_prediction_to_preferences(
-                oracle_tensor, predictions
+                self.oracle_tensor, predictions
             )
-        examined_matrix = click_model(predictions)
 
-        # Map booleans to {1, -1} values
-        should_click = 2 * (preferences_matrix & examined_matrix) - 1
-
-        interaction = should_click * predictions
-        feedback_matrix = interaction * examined_matrix
+        examination_matrix = build_examination_matrix(
+            predictions, shape=(self.n_users, self.n_items)
+        )
+        feedback_matrix = get_feedback_matrix(predictions, preferences_matrix)
 
         mapped_feedback = torch.where(
             feedback_matrix == 0,
@@ -150,15 +152,16 @@ class Simulator:
             ),
         )
         # Update user preferences after examining recommendations
-        self.oracle_matrix = (
+        self.oracle_tensor = (
             update_preference_matrix(
-                preference_matrix=self.oracle_matrix,
-                examination_matrix=examined_matrix,
+                preference_matrix=self.oracle_tensor,
+                examination_matrix=examination_matrix,
                 preference_update_rate=self.preference_update_rate,
             )
             if should_update_preferences
-            else self.oracle_matrix
+            else self.oracle_tensor
         )
+
         return mapped_feedback
 
     def simulate_user_feedback(self, rec, score):
@@ -340,6 +343,13 @@ class Simulator:
         )
 
         for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
+            # Sparsity = (Total Elements - Non-Zero Elements) / Total Elements
+            sparsity = 1.0 - (
+                torch.count_nonzero(self.oracle_tensor).item()
+                / self.oracle_tensor.numel()
+            )
+
+            print(f"Sparsity at round {round_idx}: {sparsity:.2%}")
             mask = self._mask_previously_seen_items(boostrapped_df)
             rec, score = self._recommend(users_history=H_0, k=k, mask=mask)
 
