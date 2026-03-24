@@ -4,7 +4,10 @@ from scipy.stats import expon
 import pandas as pd
 
 from dynamicTasteDistortion.simulationConstants import USER_COL, ITEM_COL
-from dynamicTasteDistortion.simulation.tensorUtils import binary_to_bipolar, pandas_df_to_sparse_tensor
+from dynamicTasteDistortion.simulation.tensorUtils import (
+    binary_to_bipolar,
+    pandas_df_to_sparse_tensor,
+)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 seed = 42
@@ -48,6 +51,7 @@ def get_feedback_matrix(predictions, preference_matrix):
     interaction = should_click * predictions
     feedback_matrix = interaction * examined_mask
     return feedback_matrix
+
 
 def build_examination_matrix(predictions, shape, dev=device):
 
@@ -102,17 +106,12 @@ def update_preference_matrix(
         preference_matrix.shape == examination_matrix.shape
     ), f"Shape mismatch between preference matrix {preference_matrix.shape } and examination_matrix {examination_matrix.shape}"
     preference_matrix_updated = preference_matrix.detach().clone()
+
+    # Preferences to acquire: Relevant items that were recommended, but not interacted with.
     preferences_to_acquire = (preference_matrix_updated == 0) & (
         examination_matrix == 1
     )
 
-    print(f"Examination matrix: {examination_matrix}")
-    print(f"Valores no examination matrix: {examination_matrix.unique()}")
-    
-    # Relevant items that were recommended, but not interacted with.
-    preferences_to_forget = (preference_matrix_updated == 1) & (
-        examination_matrix == -1
-    )
     users, items = torch.where(preferences_to_acquire)
 
     updated_preferences = torch.bernoulli(
@@ -124,7 +123,10 @@ def update_preference_matrix(
     ).to(torch.int64)
     preference_matrix_updated[users, items] = updated_preferences
 
-    # Now we repeat for preferences to forget
+    # Preferences to forget:
+    preferences_to_forget = (preference_matrix_updated == 1) & (
+        examination_matrix == -1
+    )
 
     users, items = torch.where(preferences_to_forget)
 
@@ -135,8 +137,10 @@ def update_preference_matrix(
             dtype=torch.float64,
         )
     ).to(torch.int64)
-    # We flip the sorted tensor because torch.bernoulli sets 1 to each entry of the tensor above with preference_update_rate. 
-    # But we're interesetd in setting 0 to them.
+    # We flip the sorted tensor because torch.bernoulli sets 1 to each entry with a probability of preference_update_rate, and 0 otherwise.
+    # We want to set 0 to each entry with a probability of preference_update_rate, and 1 otherwise.
+    # Each entry in preference_matrix_updated[users, items] == 1 by definition. So we set 0 to them
+    # by flipping the updated_preferences tensor
     preference_matrix_updated[users, items] = 1 - updated_preferences
 
     return preference_matrix_updated
