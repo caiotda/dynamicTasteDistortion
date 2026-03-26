@@ -19,7 +19,9 @@ from calibratedRecs.mappings import CALIBRATION_MODE_TO_COL_NAME
 from calibratedRecs.metrics import mace, get_avg_kl_div
 from dynamicTasteDistortion.simulation.simulationUtils import (
     build_examination_matrix,
+    build_interaction_timestamp_matrix,
     get_feedback_matrix,
+    get_users_most_recent_interaction_timestamp,
     map_prediction_to_preferences,
     random_rec,
     update_preference_matrix,
@@ -40,14 +42,16 @@ from dynamicTasteDistortion.simulation.tensorUtils import (
 
 from tqdm import tqdm
 
+TS_NOW = pd.Timestamp.now().timestamp()
+
 
 class Simulator:
     def __init__(
         self,
         oracle_matrix,
         model,
-        initial_date,
         user_timestamp_distribution,
+        initial_date=TS_NOW,
         base_artifacts_path=None,
         num_interactions_bootstrapped=1_000_000,
         bootstrapped_df=None,
@@ -88,10 +92,6 @@ class Simulator:
 
         self.use_random_rec = True if model is None else False
         self.model = model
-        self.initial_date = initial_date
-
-        if self.initial_date is None:
-            self.initial_date = pd.Timestamp.now().timestamp()
 
         self.users = torch.tensor(users, device=self.device)
 
@@ -105,6 +105,11 @@ class Simulator:
             self.click_matrix = self.bootstrap_clicks(
                 k=100, num_interactions_bootstrapped=num_interactions_bootstrapped
             )
+
+        self.interaction_recency_matrix = build_interaction_timestamp_matrix(
+            self.n_users, self.n_items, self.oracle_tensor, initial_date, self.device
+        )
+
         self.click_matrix[GENRES_COL] = (
             self.click_matrix[ITEM_COL]
             .map(self.item2genreMap)
@@ -190,9 +195,14 @@ class Simulator:
         scores = score.flatten().tolist()
         constant = [1.0] * len(scores)
         timestamps = [
-            (self.timestamp_distribution[user].rvs(1)[0] / 60) + self.initial_date
+            (self.timestamp_distribution[user].rvs(1)[0] / 60)
+            + get_users_most_recent_interaction_timestamp(
+                self.interaction_recency_matrix, user
+            )
             for user in user_ids
         ]
+        timestamps_tensor = torch.tensor(timestamps, device=self.device, dtype=self.interaction_recency_matrix.dtype)
+        self.interaction_recency_matrix[user_ids, items] = timestamps_tensor
         entries = list(
             zip(
                 users_indices,
