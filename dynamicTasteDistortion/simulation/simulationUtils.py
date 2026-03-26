@@ -129,16 +129,17 @@ def update_preference_matrix(
     )
 
     users, items = torch.where(preferences_to_forget)
-
+    preference_forgetting_rate = preference_update_rate
     updated_preferences = torch.bernoulli(
         torch.full_like(
             preference_matrix_updated[users, items],
-            preference_update_rate,
+            preference_forgetting_rate, # Per user probability? -> Every time we examine an item, we record its timestamp per user?
+            # If never interacted with, we set the start of the simulation. (If item is relevant, it was bootstrapped?)
             dtype=torch.float64,
         )
     ).to(torch.int64)
-    # We flip the sorted tensor because torch.bernoulli sets 1 to each entry with a probability of preference_update_rate, and 0 otherwise.
-    # We want to set 0 to each entry with a probability of preference_update_rate, and 1 otherwise.
+    # We flip the sorted tensor because torch.bernoulli sets 1 to each entry with a probability of preference_forgetting_rate, and 0 otherwise.
+    # We want to set 0 to each entry with a probability of preference_forgetting_rate, and 1 otherwise.
     # Each entry in preference_matrix_updated[users, items] == 1 by definition. So we set 0 to them
     # by flipping the updated_preferences tensor
     preference_matrix_updated[users, items] = 1 - updated_preferences

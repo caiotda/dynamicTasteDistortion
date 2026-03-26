@@ -189,7 +189,6 @@ class Simulator:
         items = rec.flatten().tolist()
         scores = score.flatten().tolist()
         constant = [1.0] * len(scores)
-
         timestamps = [
             (self.timestamp_distribution[user].rvs(1)[0] / 60) + self.initial_date
             for user in user_ids
@@ -342,13 +341,6 @@ class Simulator:
         )
 
         for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
-            # Sparsity = (Total Elements - Non-Zero Elements) / Total Elements
-            sparsity = 1.0 - (
-                torch.count_nonzero(self.oracle_tensor).item()
-                / self.oracle_tensor.numel()
-            )
-
-            print(f"Sparsity at round {round_idx}: {sparsity:.2%}")
             mask = self._mask_previously_seen_items(boostrapped_df)
             rec, score = self._recommend(users_history=H_0, k=k, mask=mask)
 
