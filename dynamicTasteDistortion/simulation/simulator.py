@@ -21,6 +21,7 @@ from dynamicTasteDistortion.simulation.simulationUtils import (
     build_examination_matrix,
     build_interaction_timestamp_matrix,
     get_feedback_matrix,
+    get_forget_probability,
     get_users_most_recent_interaction_timestamp,
     map_prediction_to_preferences,
     random_rec,
@@ -110,6 +111,8 @@ class Simulator:
             self.n_users, self.n_items, self.oracle_tensor, initial_date, self.device
         )
 
+        self.forgetting_probability = torch.ones_like(self.interaction_recency_matrix)
+
         self.click_matrix[GENRES_COL] = (
             self.click_matrix[ITEM_COL]
             .map(self.item2genreMap)
@@ -161,6 +164,7 @@ class Simulator:
                 preference_matrix=self.oracle_tensor,
                 examination_matrix=examination_matrix,
                 preference_update_rate=self.preference_update_rate,
+                preference_forgetting_probability=self.forgetting_probability,
             )
             if should_update_preferences
             else self.oracle_tensor
@@ -206,6 +210,10 @@ class Simulator:
         )
 
         self.interaction_recency_matrix[user_ids, items] = timestamps_tensor
+        # Update interest retention given new timestamps
+        self.forgetting_probability = get_forget_probability(
+            self.interaction_recency_matrix
+        )
         entries = list(
             zip(
                 users_indices,

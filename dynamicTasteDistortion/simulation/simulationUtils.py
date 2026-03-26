@@ -143,7 +143,10 @@ def click_model(predictions):
 
 
 def update_preference_matrix(
-    preference_matrix, examination_matrix, preference_update_rate=0.2
+    preference_matrix,
+    examination_matrix,
+    preference_forgetting_probability,
+    preference_update_rate=0.2,
 ):
     assert (
         preference_matrix.shape == examination_matrix.shape
@@ -172,16 +175,11 @@ def update_preference_matrix(
     )
 
     users, items = torch.where(preferences_to_forget)
-    preference_forgetting_rate = preference_update_rate
-    updated_preferences = torch.bernoulli(
-        torch.full_like(
-            preference_matrix_updated[users, items],
-            preference_forgetting_rate, # Per user probability? -> Every time we examine an item, we record its timestamp per user?
-            # If never interacted with, we set the start of the simulation. (If item is relevant, it was bootstrapped?)
-            dtype=torch.float64,
-        )
-    ).to(torch.int64)
-    # We flip the sorted tensor because torch.bernoulli sets 1 to each entry with a probability of preference_forgetting_rate, and 0 otherwise.
+    preference_forgetting_rate = preference_forgetting_probability[users, items]
+
+    # Preference forgetting rate already is a probability tensor, so we pass it to torch.bernoulli.
+    updated_preferences = torch.bernoulli(preference_forgetting_rate).to(torch.int64)
+    # We flip the sampled tensor because torch.bernoulli sets 1 to each entry with a probability of preference_forgetting_rate, and 0 otherwise.
     # We want to set 0 to each entry with a probability of preference_forgetting_rate, and 1 otherwise.
     # Each entry in preference_matrix_updated[users, items] == 1 by definition. So we set 0 to them
     # by flipping the updated_preferences tensor
