@@ -53,6 +53,38 @@ def get_feedback_matrix(predictions, preference_matrix):
     return feedback_matrix
 
 
+def get_users_most_recent_interaction_timestamp(interaction_recency_matrix, user):
+    user_interactions = interaction_recency_matrix[user, :]
+    return user_interactions.max().item()
+
+def build_interaction_timestamp_matrix(n_users, n_items, oracle_tensor, initial_timestamp, dev=device):
+    """
+    Build a matrix of interaction timestamps for users and items.
+    
+    Args:
+        n_users (int): Number of users.
+        n_items (int): Number of items.
+        oracle_tensor (torch.Tensor): Tensor containing user-item interaction pairs.
+        initial_timestamp (float): The timestamp value to assign to interactions.
+        dev (torch.device): Device to place the tensor on (default: device).
+    
+    Returns:
+        torch.Tensor: A matrix of shape (n_users, n_items) with timestamps at interaction positions.
+    """
+    interaction_recency_matrix = torch.zeros(
+        (n_users, n_items), device=dev, dtype=torch.float32
+    )
+    users_with_interactions, items_interacted_with = (
+        oracle_tensor[:, 0],
+        oracle_tensor[:, 1],
+    )
+
+    interaction_recency_matrix[
+        users_with_interactions, items_interacted_with
+    ] = initial_timestamp
+
+    return interaction_recency_matrix
+
 def build_examination_matrix(predictions, shape, dev=device):
 
     examination_matrix = torch.zeros(shape, device=dev)
