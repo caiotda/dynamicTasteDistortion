@@ -201,7 +201,10 @@ class Simulator:
             )
             for user in user_ids
         ]
-        timestamps_tensor = torch.tensor(timestamps, device=self.device, dtype=self.interaction_recency_matrix.dtype)
+        timestamps_tensor = torch.tensor(
+            timestamps, device=self.device, dtype=self.interaction_recency_matrix.dtype
+        )
+
         self.interaction_recency_matrix[user_ids, items] = timestamps_tensor
         entries = list(
             zip(
