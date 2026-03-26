@@ -6,8 +6,7 @@ num_rounds_per_eval: 5
 num_users: 1000
 
 model: most_popular
-preference_update_rate: 0.1
+preference_update_rate: 0.9
 use_oracle_matrix: y
 
-exp_name: most_popular_alpha_0_1
-measure_distortion_in_rec: n
+exp_name: most_popular_0_9
