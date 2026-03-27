@@ -13,6 +13,35 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 seed = 42
 torch.manual_seed(seed)
 
+def update_genre_affinity_tensor(users, genre_affinity, interacted_items_tensor, item_genre_tensor):
+    # we get the genres in each interacted items -> Shape (n_users, rec_size, n_genres)
+    genre_tensor = item_genre_tensor[interacted_items_tensor[users]]
+    # Summing up the genres interests in each recommendation -> Shape (n_users, n_genres)
+    interest_per_genre = genre_tensor.sum(dim=1).to(genre_affinity.device)
+    genre_affinity[users] += interest_per_genre
+    # Renormalize each user's row
+    genre_affinity[users] = genre_affinity[users] / genre_affinity[users].sum(dim=1, keepdim=True).clamp(min=1)
+    # G_{u,i} = max genre affinity across item's genres: (n_users, n_items)
+    G = torch.max(genre_affinity.unsqueeze(1) * item_genre_tensor.unsqueeze(0), dim=2).values
+    return G
+
+
+def get_item_to_genre_tensor(item_2_genre_dict):
+
+    all_genres = sorted(list(set(g for genres in item_2_genre_dict.values() for g in genres)))
+    n_genres = len(all_genres)
+    n_items = len(item_2_genre_dict)
+
+    item_genre_matrix = torch.zeros(n_items, n_genres, device=device)
+    genre_name_to_id = {genre: idx for idx, genre in enumerate(all_genres)}
+
+    for item_id, genres in item_2_genre_dict.items():
+        for g in genres:
+            genre_id = genre_name_to_id[g]
+            item_genre_matrix[item_id, genre_id] = 1
+
+    return item_genre_matrix
+
 
 def get_user_preferences(oracle_matrix):
     user_ids = oracle_matrix[USER_COL].unique()
@@ -53,10 +82,10 @@ def get_feedback_matrix(predictions, preference_matrix):
     return feedback_matrix
 
 
-def get_forget_probability(interaction_recency_matrix, scale=1):
-    # Simplest version of forgetting curve.
-    retention = torch.exp(-interaction_recency_matrix * scale)
-    forget_probability = 1 - retention
+def get_forget_probability(interaction_recency_matrix, G):
+    # Higher G -> slower decay. So we flip G
+    exponent =  interaction_recency_matrix + (1 - G)
+    forget_probability = 1 - torch.exp(-exponent)
     return forget_probability
 
 
