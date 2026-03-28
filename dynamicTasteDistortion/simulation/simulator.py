@@ -28,9 +28,6 @@ from dynamicTasteDistortion.simulationConstants import (
     TIMESTAMP_COL,
     RATING_COL,
 )
-from dynamicTasteDistortion.simulation.tensorUtils import (
-    get_matrix_coordinates,
-)
 
 
 from tqdm import tqdm
@@ -133,13 +130,16 @@ class Simulator:
             feedback_matrix = get_feedback_for_predictions(None, rec)
         else:
             feedback_matrix = get_feedback_for_predictions(self.oracle_matrix, rec)
-        indices = get_matrix_coordinates(feedback_matrix)
-
+        # We retrieve only clicked interactions, flagged as 1
+        indices = torch.nonzero(feedback_matrix == 1, as_tuple=False)
         users_indices, click_positions = indices[:, 0].tolist(), indices[:, 1].tolist()
+        # We retrieved the clicked items by using the user_ids with interaction
+        # alongside the click positions
+        clicked_items = rec[users_indices, click_positions]
         user_ids = [self.user_idx_to_id[idx] for idx in users_indices]
 
         feedbacks = feedback_matrix.flatten().tolist()
-        items = rec.flatten().tolist()
+        items = clicked_items.flatten().tolist()
         scores = score.flatten().tolist()
         constant = [1.0] * len(scores)
 
