@@ -65,6 +65,7 @@ def click_model(predictions):
 
 
 def get_feedback_for_predictions(oracle_matrix, predictions):
+    assert (predictions >= 0).all(), "Item IDs must be non-negative"
     # Simulates feedback only through click position.
     if oracle_matrix is None:
         preferences_matrix = torch.ones_like(
@@ -75,17 +76,29 @@ def get_feedback_for_predictions(oracle_matrix, predictions):
         preferences_matrix = map_prediction_to_preferences(oracle_tensor, predictions)
     examined_matrix = click_model(predictions)
 
+    # Maps a {0, 1} tensor to {1, -1} set
     should_click = 2 * (preferences_matrix & examined_matrix) - 1
 
-    interaction = should_click * predictions
+    predictions_idx_from_1 = predictions + 1
+    # Negative item ids are not interacted with
+
+    interaction = should_click * predictions_idx_from_1
+    # We set uninteracted item ids to 0
     feedback_matrix = interaction * examined_matrix
 
+    # At this point, we have:
+    # positive item id -> Examined and interacted with
+    # negative item id -> Examined, but not interacted with
+    # zero item id -> Not examined, nor interacted with
     mapped_feedback = torch.where(
         feedback_matrix == 0,
+        # Not examined nor clicked.
         torch.tensor(float("nan"), device=feedback_matrix.device),
         torch.where(
             feedback_matrix < 0,
+            # Examined, but not clicked
             torch.tensor(0, device=feedback_matrix.device),
+            # Examined and clicked
             torch.tensor(1, device=feedback_matrix.device),
         ),
     )
