@@ -6,29 +6,37 @@ import pandas as pd
 from dynamicTasteDistortion.simulationConstants import USER_COL, ITEM_COL
 from dynamicTasteDistortion.simulation.tensorUtils import (
     binary_to_bipolar,
-    pandas_df_to_sparse_tensor,
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 seed = 42
 torch.manual_seed(seed)
 
-def update_genre_affinity_tensor(users, genre_affinity, interacted_items_tensor, item_genre_tensor):
+
+def update_genre_affinity_tensor(
+    users, genre_affinity, interacted_items_tensor, item_genre_tensor
+):
     # we get the genres in each interacted items -> Shape (n_users, rec_size, n_genres)
     genre_tensor = item_genre_tensor[interacted_items_tensor[users]]
     # Summing up the genres interests in each recommendation -> Shape (n_users, n_genres)
     interest_per_genre = genre_tensor.sum(dim=1).to(genre_affinity.device)
     genre_affinity[users] += interest_per_genre
     # Renormalize each user's row
-    genre_affinity[users] = genre_affinity[users] / genre_affinity[users].sum(dim=1, keepdim=True).clamp(min=1)
+    genre_affinity[users] = genre_affinity[users] / genre_affinity[users].sum(
+        dim=1, keepdim=True
+    ).clamp(min=1)
     # G_{u,i} = max genre affinity across item's genres: (n_users, n_items)
-    G = torch.max(genre_affinity.unsqueeze(1) * item_genre_tensor.unsqueeze(0), dim=2).values
+    G = torch.max(
+        genre_affinity.unsqueeze(1) * item_genre_tensor.unsqueeze(0), dim=2
+    ).values
     return G
 
 
 def get_item_to_genre_tensor(item_2_genre_dict):
 
-    all_genres = sorted(list(set(g for genres in item_2_genre_dict.values() for g in genres)))
+    all_genres = sorted(
+        list(set(g for genres in item_2_genre_dict.values() for g in genres))
+    )
     n_genres = len(all_genres)
     n_items = len(item_2_genre_dict)
 
@@ -73,18 +81,23 @@ def map_prediction_to_preferences(oracle_tensor, prediction_tensor):
 
 
 def get_feedback_matrix(predictions, preference_matrix):
-    examined_mask = click_model(predictions)
-    user_model = preference_matrix & examined_mask
-    should_click = binary_to_bipolar(user_model)
+    examined_matrix = click_model(predictions)
 
-    interaction = should_click * predictions
-    feedback_matrix = interaction * examined_mask
+    # Maps a {0, 1} tensor to {1, -1} set
+    should_click = 2 * (preference_matrix & examined_matrix) - 1
+
+    predictions_idx_from_1 = predictions + 1
+    # Negative item ids are not interacted with
+
+    interaction = should_click * predictions_idx_from_1
+    # We set uninteracted item ids to 0
+    feedback_matrix = interaction * examined_matrix
     return feedback_matrix
 
 
 def get_forget_probability(interaction_recency_matrix, G):
     # Higher G -> slower decay. So we flip G
-    exponent =  interaction_recency_matrix + (1 - G)
+    exponent = interaction_recency_matrix + (1 - G)
     forget_probability = 1 - torch.exp(-exponent)
     return forget_probability
 

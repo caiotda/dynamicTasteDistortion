@@ -37,8 +37,6 @@ from dynamicTasteDistortion.simulationConstants import (
     RATING_COL,
 )
 from dynamicTasteDistortion.simulation.tensorUtils import (
-    binary_to_bipolar,
-    get_matrix_coordinates,
     pandas_df_to_sparse_tensor,
 )
 
@@ -109,7 +107,6 @@ class Simulator:
                 k=100, num_interactions_bootstrapped=num_interactions_bootstrapped
             )
 
-
         self.click_matrix[GENRES_COL] = (
             self.click_matrix[ITEM_COL]
             .map(self.item2genreMap)
@@ -123,12 +120,10 @@ class Simulator:
         )
         n_genres = self.p_g_i.shape[1]
 
-
         self.interaction_recency_matrix = build_interaction_timestamp_matrix(
             self.n_users, self.n_items, self.oracle_tensor, initial_date, self.device
         )
         self.genre_tensor = get_item_to_genre_tensor(self.item2genreMap)
-
 
         self.forgetting_probability = torch.ones_like(self.interaction_recency_matrix)
         self.genre_affinity = torch.zeros(self.n_users, n_genres)
@@ -140,6 +135,7 @@ class Simulator:
             os.makedirs(self.base_artifacts_path)
 
     def get_feedback_for_predictions(self, predictions):
+        assert (predictions >= 0).all(), "Item IDs must be non-negative"
         # Simulates feedback only through click position.
         if self.ignore_oracle_matrix:
             preferences_matrix = torch.ones_like(
@@ -197,14 +193,16 @@ class Simulator:
         """
 
         feedback_matrix = self.get_feedback_for_predictions(rec)
-        indices = get_matrix_coordinates(feedback_matrix)
-
+        # We retrieve only clicked interactions, flagged as 1
+        indices = torch.nonzero(feedback_matrix == 1, as_tuple=False)
         users_indices, click_positions = indices[:, 0].tolist(), indices[:, 1].tolist()
+        # We retrieved the clicked items by using the user_ids with interaction
+        # alongside the click positions
+        clicked_items = rec[users_indices, click_positions]
         user_ids = [self.user_idx_to_id[idx] for idx in users_indices]
 
         feedbacks = feedback_matrix.flatten().tolist()
-        items = rec.flatten().tolist()
-        interacted_items_tensor = rec #TODO: temp
+        items = clicked_items.flatten().tolist()
         scores = score.flatten().tolist()
         constant = [1.0] * len(scores)
         timestamps = [
@@ -220,10 +218,11 @@ class Simulator:
 
         self.interaction_recency_matrix[user_ids, items] = timestamps_tensor
         # Update interest retention given new timestamps
-        self.genre_affinity = update_genre_affinity_tensor(users_indices, self.genre_affinity, interacted_items_tensor)
+        self.genre_affinity = update_genre_affinity_tensor(
+            users_indices, self.genre_affinity, interacted_items_tensor
+        )
         self.forgetting_probability = get_forget_probability(
-            self.interaction_recency_matrix,
-            self.genre_affinity
+            self.interaction_recency_matrix, self.genre_affinity
         )
         entries = list(
             zip(

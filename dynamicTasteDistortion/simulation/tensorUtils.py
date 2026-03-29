@@ -2,13 +2,6 @@ import torch
 from dynamicTasteDistortion.simulationConstants import USER_COL, ITEM_COL
 
 
-def binary_to_bipolar(tensor):
-    return 2*tensor - 1
-
-def get_matrix_coordinates(matrix):
-    return torch.nonzero(torch.ones_like(matrix), as_tuple=False)
-
-
 def pandas_df_to_sparse_tensor(df):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ratings_tensor = torch.tensor(
