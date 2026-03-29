@@ -4,9 +4,7 @@ from scipy.stats import expon
 import pandas as pd
 
 from dynamicTasteDistortion.simulationConstants import USER_COL, ITEM_COL
-from dynamicTasteDistortion.simulation.tensorUtils import (
-    binary_to_bipolar,
-)
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 seed = 42
@@ -16,11 +14,13 @@ torch.manual_seed(seed)
 def update_genre_affinity_tensor(
     users, genre_affinity, interacted_items_tensor, item_genre_tensor
 ):
-    # we get the genres in each interacted items -> Shape (n_users, rec_size, n_genres)
-    genre_tensor = item_genre_tensor[interacted_items_tensor[users]]
-    # Summing up the genres interests in each recommendation -> Shape (n_users, n_genres)
-    interest_per_genre = genre_tensor.sum(dim=1).to(genre_affinity.device)
-    genre_affinity[users] += interest_per_genre
+    # (n_interactions, n_genres)
+    genre_tensor = item_genre_tensor[interacted_items_tensor].to(genre_affinity.device)
+
+    # Scatter-add each interaction's genres into the corresponding user row
+    genre_affinity.scatter_add_(
+        0, users.unsqueeze(1).expand_as(genre_tensor), genre_tensor.float()
+    )
     # Renormalize each user's row
     genre_affinity[users] = genre_affinity[users] / genre_affinity[users].sum(
         dim=1, keepdim=True
@@ -29,7 +29,7 @@ def update_genre_affinity_tensor(
     G = torch.max(
         genre_affinity.unsqueeze(1) * item_genre_tensor.unsqueeze(0), dim=2
     ).values
-    return G
+    return genre_affinity, G
 
 
 def get_item_to_genre_tensor(item_2_genre_dict):
@@ -142,7 +142,7 @@ def build_examination_matrix(predictions, shape, dev=device):
 
     examination_matrix = torch.zeros(shape, device=dev)
     examined_predictions = click_model(predictions)
-    examined_mask_bipolar = binary_to_bipolar(examined_predictions)
+    examined_mask_bipolar = 2 * examined_predictions - 1
     examined_item_ids = predictions * examined_mask_bipolar
 
     # Get interacted recommendation items.

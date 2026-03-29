@@ -126,7 +126,7 @@ class Simulator:
         self.genre_tensor = get_item_to_genre_tensor(self.item2genreMap)
 
         self.forgetting_probability = torch.ones_like(self.interaction_recency_matrix)
-        self.genre_affinity = torch.zeros(self.n_users, n_genres)
+        self.genre_affinity = torch.zeros(self.n_users, n_genres, device=self.device)
 
         self.base_artifacts_path = base_artifacts_path
         if base_artifacts_path is not None and not os.path.exists(
@@ -218,11 +218,12 @@ class Simulator:
 
         self.interaction_recency_matrix[user_ids, items] = timestamps_tensor
         # Update interest retention given new timestamps
-        self.genre_affinity = update_genre_affinity_tensor(
-            users_indices, self.genre_affinity, interacted_items_tensor
+        user_tensor = torch.tensor(users_indices, device=self.device)
+        self.genre_affinity, G = update_genre_affinity_tensor(
+            user_tensor, self.genre_affinity, items, self.genre_tensor
         )
         self.forgetting_probability = get_forget_probability(
-            self.interaction_recency_matrix, self.genre_affinity
+            self.interaction_recency_matrix, G
         )
         entries = list(
             zip(
