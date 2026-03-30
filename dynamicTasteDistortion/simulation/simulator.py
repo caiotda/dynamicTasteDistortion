@@ -20,7 +20,7 @@ from calibratedRecs.metrics import mace, get_avg_kl_div
 from dynamicTasteDistortion.simulation.simulationUtils import (
     build_examination_matrix,
     build_interaction_timestamp_matrix,
-    get_feedback_matrix,
+    get_user_feedback_from_predictions,
     get_forget_probability,
     get_item_to_genre_tensor,
     get_users_most_recent_interaction_timestamp,
@@ -60,22 +60,29 @@ class Simulator:
         calibration_type=None,
         preference_update_rate=0,
     ):
+        # TODO: documentação dos parametros
         self.device = (
             model.device
             if model is not None
             else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )
-
+        # Probability of acquiring new preferences from examined, but unclicked items
         self.preference_update_rate = preference_update_rate
+        # TODO: faz sentido esse parametro / valor do parametro?
         self.top_k_for_evaluation = 10
         self.calibration_type = calibration_type
+        # Maps each user_id to their average timestamp between interactions probability
+        # distribution. Timestamps deltas are sampled from it.
         self.timestamp_distribution = user_timestamp_distribution
+        # Wether we should simulate the user via a preference + click model (True) or just the click model
+        # false (TODO: faz sentido isso estar aqui ainda?)
         self.ignore_oracle_matrix = ignore_oracle_matrix
         self.user_idx_to_id = {
             idx: user_id
             for idx, user_id in enumerate(self.timestamp_distribution.keys())
         }
 
+        # TODO: double check de colisão entre idx e id
         users = list(self.user_idx_to_id.values())
         filtered_oracle_matrix = (
             oracle_matrix[oracle_matrix[USER_COL].isin(users)]
@@ -100,6 +107,8 @@ class Simulator:
             list(oracle_matrix[ITEM_COL].drop_duplicates()), device=self.device
         )
 
+        # Check if we have a bootstrapped set of clicks set; if not, we run the bootstrapping
+        # process.
         if (bootstrapped_df is not None) and (not bootstrapped_df.empty):
             self.click_matrix = bootstrapped_df
         else:
@@ -115,23 +124,28 @@ class Simulator:
             )
         )
         self.click_matrix = preprocess_dataframe_for_calibration(self.click_matrix)
+        # Genre distribution per item.
         self.p_g_i = build_item_genre_distribution_tensor(
             self.click_matrix, self.n_items
         )
         n_genres = self.p_g_i.shape[1]
 
+        # N_users x N_items matrix that tracks the most recent interaction between each
+        # user and item in the simulation.
         self.interaction_recency_matrix = build_interaction_timestamp_matrix(
             self.n_users, self.n_items, self.oracle_tensor, initial_date, self.device
         )
+
+        # Builds a multi hot encoding tensor of shape n_items x n_genres.
         self.genre_tensor = get_item_to_genre_tensor(self.item2genreMap)
 
+        # Stores the probability of each user forgetting each item. This is time dependant
+        # And depends on the genre affinity between the user and the item.
         self.forgetting_probability = torch.ones_like(self.interaction_recency_matrix)
         self.genre_affinity = torch.zeros(self.n_users, n_genres, device=self.device)
 
-        self.base_artifacts_path = base_artifacts_path
-        if base_artifacts_path is not None and not os.path.exists(
-            self.base_artifacts_path
-        ):
+        # Basic persistent configurations
+        if base_artifacts_path is not None and not os.path.exists(base_artifacts_path):
             os.makedirs(self.base_artifacts_path)
 
     def get_feedback_for_predictions(self, predictions):
@@ -148,21 +162,12 @@ class Simulator:
                 self.oracle_tensor, predictions
             )
 
-        examination_matrix = build_examination_matrix(
-            predictions, shape=(self.n_users, self.n_items)
-        )
-        feedback_matrix = get_feedback_matrix(predictions, preferences_matrix)
-
-        mapped_feedback = torch.where(
-            feedback_matrix == 0,
-            torch.tensor(float("nan"), device=feedback_matrix.device),
-            torch.where(
-                feedback_matrix < 0,
-                torch.tensor(0, device=feedback_matrix.device),
-                torch.tensor(1, device=feedback_matrix.device),
-            ),
-        )
+        # Constains which items were interacted with.
+        examination_matrix = build_examination_matrix(predictions, preferences_matrix)
         # Update user preferences after examining recommendations
+        #TODO: aqui tem uma falha de lógica: o examination_matrix tem que acompanhar quem foi examinado.
+        # mas a variavel acima mostra quem foi clicado. 
+
         self.oracle_tensor = (
             update_preference_matrix(
                 preference_matrix=self.oracle_tensor,
@@ -174,7 +179,7 @@ class Simulator:
             else self.oracle_tensor
         )
 
-        return mapped_feedback
+        return examination_matrix
 
     def simulate_user_feedback(self, rec, score):
         """
@@ -362,8 +367,12 @@ class Simulator:
         H_0 = boostrapped_df.copy()
         maces = []
         kl_divs = []
+        # This ensures that we always have a fresh model at each retrain, without knowing
+        # its parameters
         initial_model = copy.deepcopy(self.model)
 
+        # Builds the tensor that tells the importance of its genre according to the users history
+        # (H0) and the importance strategy used (weight col)
         user_history_tensor = build_user_genre_history_distribution(
             H_0,
             self.p_g_i,
@@ -373,6 +382,7 @@ class Simulator:
         )
 
         for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
+            # We avoid recommending repeated items in the same interaction.
             mask = self._mask_previously_seen_items(boostrapped_df)
             rec, score = self._recommend(users_history=H_0, k=k, mask=mask)
 
@@ -381,6 +391,7 @@ class Simulator:
                 score=score,
             )
 
+            # We calculate the taste distortion between what's being recommended and the users initial taste
             rec_genre_distribution_tensor = build_user_genre_history_distribution(
                 df=rec_df,
                 p_g_i=self.p_g_i,
@@ -401,8 +412,11 @@ class Simulator:
             kl_divs.append(iteration_avg_kl_div)
             maces.append(iteration_mace)
 
+            # What was interacted with (round_df) gets added to the running click df.
             boostrapped_df = pd.concat([boostrapped_df, round_df], ignore_index=True)
 
+            # At every L rounds, we retrain the model and reset the accumulated clicks, which is done
+            # to avoid an ever growing set of clicks to train the model on.
             if round_idx % L == 0:
                 if not self.use_random_rec:
                     print("retraining model...")

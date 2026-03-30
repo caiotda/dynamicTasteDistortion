@@ -80,8 +80,26 @@ def map_prediction_to_preferences(oracle_tensor, prediction_tensor):
     return oracle_tensor[indices, prediction_tensor].int()
 
 
-def get_feedback_matrix(predictions, preference_matrix):
-    examined_matrix = click_model(predictions)
+def get_user_interactions_from_predictions(predictions, preference_matrix):
+    """
+    Given a tensor of predictions from a Recommender and an oracle matrix that tells
+    what item is relevant to each user, returns which item was actually clicked by the simulated
+    user. We use a simple click model to simulate an examination, and the preference_matrix to 
+    simulate relevancy. If an item is relevant and examined, it was clicked.
+    
+    predictions: torch.tensor of shape (n_users, k) where each entry is a recommended
+    item id to a given user.
+    preference_matrix: binary torch.tensor of shape (n_users, n_items). 
+        preference_matrix[u, i] = 1 if item i is relevant to user u; 0 otherwise.
+
+
+
+    returns
+        feedback_matrix: torch.tensor of shape (n_users, n_items) where each entry details if the item
+        was clicked by the user or not.
+    """
+
+    examined_matrix = click_model(predictions, shape=preference_matrix.shape)
 
     # Maps a {0, 1} tensor to {1, -1} set
     should_click = 2 * (preference_matrix & examined_matrix) - 1
@@ -138,25 +156,17 @@ def build_interaction_timestamp_matrix(
     return interaction_recency_matrix
 
 
-def build_examination_matrix(predictions, shape, dev=device):
-
-    examination_matrix = torch.zeros(shape, device=dev)
-    examined_predictions = click_model(predictions)
-    examined_mask_bipolar = 2 * examined_predictions - 1
-    examined_item_ids = predictions * examined_mask_bipolar
-
-    # Get interacted recommendation items.
-    row_indices, col_indices = torch.where(examined_item_ids > 0)
-    item_ids = predictions[row_indices, col_indices]
-    # item_ids were examined by row_indices users.
-    examination_matrix[row_indices, item_ids] = 1.0
-
-    # Flag recommended but not interacted items.
-    row_indices, col_indices = torch.where(examined_item_ids < 0)
-    item_ids = predictions[row_indices, col_indices]
-    # item_ids were examined by row_indices users.
-    examination_matrix[row_indices, item_ids] = -1.0
-
+def build_examination_matrix(predictions, preferences_matrix):
+    feedback_matrix = get_user_interactions_from_predictions(predictions, preferences_matrix)
+    examination_matrix = torch.where(
+        feedback_matrix == 0,
+        torch.tensor(float("nan"), device=feedback_matrix.device),
+        torch.where(
+            feedback_matrix < 0,
+            torch.tensor(0, device=feedback_matrix.device),
+            torch.tensor(1, device=feedback_matrix.device),
+        ),
+    )
     return examination_matrix
 
 
