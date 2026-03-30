@@ -18,7 +18,7 @@ from calibratedRecs.reranking_utils import rerank_by_calibration
 from calibratedRecs.mappings import CALIBRATION_MODE_TO_COL_NAME
 from calibratedRecs.metrics import mace, get_avg_kl_div
 from dynamicTasteDistortion.simulation.simulationUtils import (
-    build_examination_matrix,
+    build_interaction_matrix,
     build_interaction_timestamp_matrix,
     get_user_feedback_from_predictions,
     get_forget_probability,
@@ -152,21 +152,21 @@ class Simulator:
         assert (predictions >= 0).all(), "Item IDs must be non-negative"
         # Simulates feedback only through click position.
         if self.ignore_oracle_matrix:
-            preferences_matrix = torch.ones_like(
+            hit_matrix = torch.ones_like(
                 predictions, dtype=torch.int8, device=self.device
             )
             should_update_preferences = False
         else:
             should_update_preferences = True
-            preferences_matrix = map_prediction_to_preferences(
+            hit_matrix = map_prediction_to_preferences(
                 self.oracle_tensor, predictions
             )
 
         # Constains which items were interacted with.
-        examination_matrix = build_examination_matrix(predictions, preferences_matrix)
+        interaction_matrix = build_interaction_matrix(predictions, hit_matrix)
+        # We flip the interaction matrix, yielding which items were examined, but not clicked
+        examination_matrix = 1 - interaction_matrix
         # Update user preferences after examining recommendations
-        #TODO: aqui tem uma falha de lógica: o examination_matrix tem que acompanhar quem foi examinado.
-        # mas a variavel acima mostra quem foi clicado. 
 
         self.oracle_tensor = (
             update_preference_matrix(
@@ -179,7 +179,7 @@ class Simulator:
             else self.oracle_tensor
         )
 
-        return examination_matrix
+        return interaction_matrix
 
     def simulate_user_feedback(self, rec, score):
         """

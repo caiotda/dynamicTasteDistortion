@@ -80,35 +80,44 @@ def map_prediction_to_preferences(oracle_tensor, prediction_tensor):
     return oracle_tensor[indices, prediction_tensor].int()
 
 
-def get_user_interactions_from_predictions(predictions, preference_matrix):
+def get_user_interactions_from_predictions(predictions, hit_matrix):
     """
     Given a tensor of predictions from a Recommender and an oracle matrix that tells
     what item is relevant to each user, returns which item was actually clicked by the simulated
-    user. We use a simple click model to simulate an examination, and the preference_matrix to 
+    user. We use a simple click model to simulate an examination, and the hit_matrix to
     simulate relevancy. If an item is relevant and examined, it was clicked.
-    
+
     predictions: torch.tensor of shape (n_users, k) where each entry is a recommended
     item id to a given user.
-    preference_matrix: binary torch.tensor of shape (n_users, n_items). 
-        preference_matrix[u, i] = 1 if item i is relevant to user u; 0 otherwise.
+    hit_matrix: binary torch.tensor of shape (n_users, k).
+        hit_matrix[u, i] = 1 if item i is relevant to user u; 0 otherwise.
 
 
 
     returns
-        feedback_matrix: torch.tensor of shape (n_users, n_items) where each entry details if the item
+        feedback_matrix: torch.tensor of shape (n_users, k) where each entry details if the item
         was clicked by the user or not.
+            feedback_matrix[u, i] > 0: item i was clicked by the user u
+            feedback_matrix[u, i] < 0: item i was examined by the user u, but not clicked
+            feedback_matrix[u, i] == 0: item i was not examined nor clicked.
     """
 
-    examined_matrix = click_model(predictions, shape=preference_matrix.shape)
+    examined_matrix = click_model(predictions)
 
-    # Maps a {0, 1} tensor to {1, -1} set
-    should_click = 2 * (preference_matrix & examined_matrix) - 1
+    # click_matrix[u,i] = 1 if user examined and if recommendation was a hit
+    # (is relevant); 0 otherwise.
+    click_matrix = hit_matrix & examined_matrix
 
-    predictions_idx_from_1 = predictions + 1
-    # Negative item ids are not interacted with
+    # Maps a {0, 1} tensor to {1, -1} set: this is done to flag
+    # un-clicked item ids as negative; clicked items have a positive id.
+    should_click = 2 * click_matrix - 1
 
-    interaction = should_click * predictions_idx_from_1
-    # We set uninteracted item ids to 0
+    # Interacted items are flagged as a positive item id.
+    # Un-interacted items are set to a negative item id.
+    interaction = should_click * predictions
+
+    # Finally, unexaminated items are set as zero. clicked items are unchanged,
+    # while examined but irrelevant items have a negative item id
     feedback_matrix = interaction * examined_matrix
     return feedback_matrix
 
@@ -156,18 +165,26 @@ def build_interaction_timestamp_matrix(
     return interaction_recency_matrix
 
 
-def build_examination_matrix(predictions, preferences_matrix):
-    feedback_matrix = get_user_interactions_from_predictions(predictions, preferences_matrix)
-    examination_matrix = torch.where(
-        feedback_matrix == 0,
-        torch.tensor(float("nan"), device=feedback_matrix.device),
+def build_interaction_matrix(predictions, hit_matrix):
+    """
+    Given a recommendation prediction
+
+    predictions: Description
+    hit_matrix: Description
+    """
+    intearction_matrix_raw = get_user_interactions_from_predictions(
+        predictions, hit_matrix
+    )
+    interaction_matrix = torch.where(
+        intearction_matrix_raw == 0,
+        torch.tensor(float("nan"), device=intearction_matrix_raw.device),
         torch.where(
-            feedback_matrix < 0,
-            torch.tensor(0, device=feedback_matrix.device),
-            torch.tensor(1, device=feedback_matrix.device),
+            intearction_matrix_raw < 0,
+            torch.tensor(0, device=intearction_matrix_raw.device),
+            torch.tensor(1, device=intearction_matrix_raw.device),
         ),
     )
-    return examination_matrix
+    return interaction_matrix
 
 
 def click_model(predictions):
@@ -212,6 +229,9 @@ def update_preference_matrix(
 
     users, items = torch.where(preferences_to_acquire)
 
+    # We update the preferences of the selected user, item pairs.
+    # A taste will be acquired following a bernoulli distribution
+    # with preference_update_rate probability.
     updated_preferences = torch.bernoulli(
         torch.full_like(
             preference_matrix_updated[users, items],
@@ -221,16 +241,19 @@ def update_preference_matrix(
     ).to(torch.int64)
     preference_matrix_updated[users, items] = updated_preferences
 
-    # Preferences to forget:
-    preferences_to_forget = (preference_matrix_updated == 1) & (
-        examination_matrix == -1
-    )
+    # Preferences to forget: items that were not clicked by the users
+    # but are relevant to them.
+    preferences_to_forget = (preference_matrix_updated == 1) & (examination_matrix == 0)
 
     users, items = torch.where(preferences_to_forget)
+    # We set a preference forgetting probability per user, item pair. This is proportional
+    # to the age of the last recorded interaction and the user preference for the genres
+    # in item.
     preference_forgetting_rate = preference_forgetting_probability[users, items]
 
     # Preference forgetting rate already is a probability tensor, so we pass it to torch.bernoulli.
     updated_preferences = torch.bernoulli(preference_forgetting_rate).to(torch.int64)
+
     # We flip the sampled tensor because torch.bernoulli sets 1 to each entry with a probability of preference_forgetting_rate, and 0 otherwise.
     # We want to set 0 to each entry with a probability of preference_forgetting_rate, and 1 otherwise.
     # Each entry in preference_matrix_updated[users, items] == 1 by definition. So we set 0 to them
