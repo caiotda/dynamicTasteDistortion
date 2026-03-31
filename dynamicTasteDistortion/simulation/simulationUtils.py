@@ -73,6 +73,14 @@ def get_user_preferences(oracle_matrix):
 
 
 def map_prediction_to_preferences(oracle_tensor, prediction_tensor):
+    """
+        Looks up relevance labels for predicted items.
+        Args:
+            oracle_tensor: Binary relevance matrix. torch.tensor, (n_users, n_items)
+            prediction_tensor: Top-k item indices per user. torch.tensor (n_users, k)
+        Returns:
+            Binary torch.tensor (n_users, k) — 1 if predicted item is relevant, 0 otherwise.
+    """
 
     indices = torch.arange(
         prediction_tensor.size(0), device=prediction_tensor.device
