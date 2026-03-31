@@ -26,6 +26,7 @@ from dynamicTasteDistortion.simulation.simulationUtils import (
     map_prediction_to_preferences,
     random_rec,
     update_genre_affinity_tensor,
+    update_oracle_from_hits,
     update_preference_matrix,
 )
 from dynamicTasteDistortion.simulationConstants import (
@@ -157,23 +158,23 @@ class Simulator:
             should_update_preferences = False
         else:
             should_update_preferences = True
-            hit_matrix = map_prediction_to_preferences(
-                self.oracle_tensor, predictions
-            )
+            hit_matrix = map_prediction_to_preferences(self.oracle_tensor, predictions)
 
-        # Constains which items were interacted with.
+
         interaction_matrix = build_interaction_matrix(predictions, hit_matrix)
-        # We flip the interaction matrix, yielding which items were examined, but not clicked
-        examination_matrix = 1 - interaction_matrix
-        # Update user preferences after examining recommendations
 
+        # Update user preferences on the recommended items
+        updated_hit_matrix = update_preference_matrix(
+            preference_matrix=hit_matrix,
+            interaction_matrix=interaction_matrix,
+            recommendation_list=predictions,
+            preference_update_rate=self.preference_update_rate,
+            preference_forgetting_probability=self.forgetting_probability,
+        )
+
+        # Reflect preference changes on the oracle tensor.
         self.oracle_tensor = (
-            update_preference_matrix(
-                preference_matrix=hit_matrix,
-                examination_matrix=examination_matrix,
-                preference_update_rate=self.preference_update_rate,
-                preference_forgetting_probability=self.forgetting_probability,
-            )
+            update_oracle_from_hits(self.oracle_tensor, predictions, updated_hit_matrix)
             if should_update_preferences
             else self.oracle_tensor
         )

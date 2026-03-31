@@ -87,6 +87,20 @@ def map_prediction_to_preferences(oracle_tensor, prediction_tensor):
     ).unsqueeze(1)
     return oracle_tensor[indices, prediction_tensor].int()
 
+def update_oracle_from_hits(oracle_tensor, prediction_tensor, updated_hit_matrix):
+    """
+    Propagates updated hit labels back to the original oracle tensor.
+    Args:
+        oracle_tensor: Binary relevance matrix (n_users, n_items)
+        prediction_tensor: Top-k item indices per user (n_users, k)
+        updated_hit_matrix: Updated relevance labels (n_users, k)
+    Returns:
+        Updated oracle tensor (n_users, n_items)
+    """
+    oracle_updated = oracle_tensor.detach().clone()
+    indices = torch.arange(prediction_tensor.size(0), device=prediction_tensor.device).unsqueeze(1)
+    oracle_updated[indices, prediction_tensor] = updated_hit_matrix
+    return oracle_updated
 
 def get_user_interactions_from_predictions(predictions, hit_matrix):
     """
@@ -233,10 +247,26 @@ def click_model(predictions):
 
 def update_preference_matrix(
     preference_matrix,
-    examination_matrix,
+    interaction_matrix,
+    recommendation_list,
     preference_forgetting_probability,
     preference_update_rate=0.2,
 ):
+    """
+    Simulates preference acquisition and forgetting for a single timestep.
+    - Acquisition: unpreferred but examined items may be liked with probability preference_update_rate.
+    - Forgetting: preferred but unexamined items may be forgotten with probability preference_forgetting_probability.
+    Args:
+        preference_matrix: Binary preference matrix (n_users, k)
+        examination_matrix: Binary matrix indicating examined items (n_users, k)
+        preference_forgetting_probability: Per (user, item) forgetting probability (n_users, n_items)
+        preference_update_rate: Probability of acquiring a new preference (default: 0.2)
+    Returns:
+        Updated binary preference matrix (n_users, k)
+    """
+    # Constains which items were interacted with.
+    # We flip the interaction matrix, yielding which items were examined, but not clicked
+    examination_matrix = 1 - interaction_matrix
     assert (
         preference_matrix.shape == examination_matrix.shape
     ), f"Shape mismatch between preference matrix {preference_matrix.shape } and examination_matrix {examination_matrix.shape}"
@@ -247,25 +277,26 @@ def update_preference_matrix(
         examination_matrix == 1
     )
 
-    users, items = torch.where(preferences_to_acquire)
+    users, rec_positions = torch.where(preferences_to_acquire)
 
     # We update the preferences of the selected user, item pairs.
     # A taste will be acquired following a bernoulli distribution
     # with preference_update_rate probability.
     updated_preferences = torch.bernoulli(
         torch.full_like(
-            preference_matrix_updated[users, items],
+            preference_matrix_updated[users, rec_positions],
             preference_update_rate,
             dtype=torch.float64,
         )
     ).to(torch.int64)
-    preference_matrix_updated[users, items] = updated_preferences
+    preference_matrix_updated[users, rec_positions] = updated_preferences
 
     # Preferences to forget: items that were not clicked by the users
     # but are relevant to them.
     preferences_to_forget = (preference_matrix_updated == 1) & (examination_matrix == 0)
 
-    users, items = torch.where(preferences_to_forget)
+    users, rec_positions = torch.where(preferences_to_forget)
+    items = recommendation_list[users, rec_positions]
     # We set a preference forgetting probability per user, item pair. This is proportional
     # to the age of the last recorded interaction and the user preference for the genres
     # in item.
@@ -278,7 +309,7 @@ def update_preference_matrix(
     # We want to set 0 to each entry with a probability of preference_forgetting_rate, and 1 otherwise.
     # Each entry in preference_matrix_updated[users, items] == 1 by definition. So we set 0 to them
     # by flipping the updated_preferences tensor
-    preference_matrix_updated[users, items] = 1 - updated_preferences
+    preference_matrix_updated[users, rec_positions] = 1 - updated_preferences
 
     return preference_matrix_updated
 
