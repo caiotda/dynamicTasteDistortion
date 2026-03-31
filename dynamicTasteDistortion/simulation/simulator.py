@@ -20,7 +20,6 @@ from calibratedRecs.metrics import mace, get_avg_kl_div
 from dynamicTasteDistortion.simulation.simulationUtils import (
     build_interaction_matrix,
     build_interaction_timestamp_matrix,
-    get_user_feedback_from_predictions,
     get_forget_probability,
     get_item_to_genre_tensor,
     get_users_most_recent_interaction_timestamp,
@@ -170,7 +169,7 @@ class Simulator:
 
         self.oracle_tensor = (
             update_preference_matrix(
-                preference_matrix=self.oracle_tensor,
+                preference_matrix=hit_matrix,
                 examination_matrix=examination_matrix,
                 preference_update_rate=self.preference_update_rate,
                 preference_forgetting_probability=self.forgetting_probability,

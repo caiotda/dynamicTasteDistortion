@@ -122,9 +122,21 @@ def get_user_interactions_from_predictions(predictions, hit_matrix):
     return feedback_matrix
 
 
+def normalize_timestamps_per_user(recency_matrix):
+    min_val = recency_matrix.min(dim=1, keepdim=True).values
+    max_val = recency_matrix.max(dim=1, keepdim=True).values
+    normalized = (recency_matrix - min_val) / (max_val - min_val).clamp(min=1)
+    return normalized
+
+
 def get_forget_probability(interaction_recency_matrix, G):
-    # Higher G -> slower decay. So we flip G
-    exponent = interaction_recency_matrix + (1 - G)
+    
+    # We normalize timestamps so that scale doesnt matter when dealing with forgetting.
+    normalized_interaction_recency_matrix = normalize_timestamps_per_user(
+        interaction_recency_matrix
+    )
+    # Higher G -> slower decay. So we flip G]
+    exponent = normalized_interaction_recency_matrix + (1 - G)
     forget_probability = 1 - torch.exp(-exponent)
     return forget_probability
 
