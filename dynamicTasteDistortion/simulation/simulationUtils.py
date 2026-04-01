@@ -11,6 +11,21 @@ torch.manual_seed(seed)
 def update_genre_affinity_tensor(
     users, genre_affinity, interacted_items_tensor, item_genre_tensor
 ):
+    """
+        Updates genre affinities based on new interactions and recomputes item affinity scores.
+        - Accumulates genre signals from interacted items into each user's affinity vector.
+        - Renormalizes affinities to sum to 1.
+        - Recomputes G[u, i] as the max genre affinity of user u across item i's genres.
+
+        Args:
+            users: User indices corresponding to each interaction (n_interactions,)
+            genre_affinity: Per-user genre affinity matrix (n_users, n_genres)
+            interacted_items_tensor: Item indices that were interacted with (n_interactions,)
+            item_genre_tensor: Binary item-genre membership matrix (n_items, n_genres)
+        Returns:
+            genre_affinity: Updated affinity matrix (n_users, n_genres)
+            G: Per (user, item) affinity score (n_users, n_items)
+    """
     # (n_interactions, n_genres)
     genre_tensor = item_genre_tensor[interacted_items_tensor].to(genre_affinity.device)
 
@@ -29,7 +44,7 @@ def update_genre_affinity_tensor(
     return genre_affinity, G
 
 
-def get_item_to_genre_tensor(item_2_genre_dict):
+def convert_item_genre_map_to_tensor(item_2_genre_dict):
 
     all_genres = sorted(
         list(set(g for genres in item_2_genre_dict.values() for g in genres))
@@ -47,26 +62,6 @@ def get_item_to_genre_tensor(item_2_genre_dict):
 
     return item_genre_matrix
 
-
-def get_user_preferences(oracle_matrix):
-    user_ids = oracle_matrix[USER_COL].unique()
-    item_ids = oracle_matrix[ITEM_COL].unique()
-    user_id_to_idx = {uid: idx for idx, uid in enumerate(user_ids)}
-    item_id_to_idx = {iid: idx for idx, iid in enumerate(item_ids)}
-
-    # standardize indices
-    user_indices = oracle_matrix[USER_COL].map(user_id_to_idx).values
-    item_indices = oracle_matrix[ITEM_COL].map(item_id_to_idx).values
-    ratings = oracle_matrix["rating"].values
-
-    matrix = torch.zeros(
-        (len(user_ids), len(item_ids)), dtype=torch.float32, device=device
-    )
-    # Set the relevancy of each user x item pair
-    matrix[user_indices, item_indices] = (
-        torch.from_numpy(ratings).to(torch.float32).to(device)
-    )
-    return matrix
 
 
 def map_prediction_to_preferences(oracle_tensor, prediction_tensor):
@@ -99,7 +94,7 @@ def update_oracle_from_hits(oracle_tensor, prediction_tensor, updated_hit_matrix
     oracle_updated[indices, prediction_tensor] = updated_hit_matrix
     return oracle_updated
 
-def get_user_interactions_from_predictions(predictions, hit_matrix):
+def simulate_user_interactions(predictions, hit_matrix):
     """
     Given a tensor of predictions from a Recommender and an oracle matrix that tells
     what item is relevant to each user, returns which item was actually clicked by the simulated
@@ -142,6 +137,11 @@ def get_user_interactions_from_predictions(predictions, hit_matrix):
 
 
 def normalize_timestamps_per_user(recency_matrix):
+    """
+    Given a tensor recency_matrix of shape n_users, n_items where
+    each entry is the most recent timestamp of interaction between user and item,
+    return a min-max normalized version.
+    """
     min_val = recency_matrix.min(dim=1, keepdim=True).values
     max_val = recency_matrix.max(dim=1, keepdim=True).values
     normalized = (recency_matrix - min_val) / (max_val - min_val).clamp(min=1)
@@ -149,6 +149,20 @@ def normalize_timestamps_per_user(recency_matrix):
 
 
 def get_forget_probability(interaction_recency_matrix, G):
+
+    """
+    Computes the probability of forgetting each (user, item) preference.
+    Forgetting increases with recency (time since last interaction)
+    and decreases with genre affinity.
+
+    Args:
+        interaction_recency_matrix: Time since last interaction per (user, item)
+            torch.tensor (n_users, n_items)
+        G: Per (user, item) genre affinity score
+            torch.tensor (n_users, n_items)
+    Returns:
+        forget_probability: Per (user, item) forgetting probability (n_users, n_items)
+    """
     
     # We normalize timestamps so that scale doesnt matter when dealing with forgetting.
     normalized_interaction_recency_matrix = normalize_timestamps_per_user(
@@ -196,14 +210,20 @@ def build_interaction_timestamp_matrix(
     return interaction_recency_matrix
 
 
-def build_interaction_matrix(predictions, hit_matrix):
+def encode_interaction_matrix(predictions, hit_matrix):
     """
-    Given a recommendation prediction
+    Builds an interaction matrix from predictions and relevance labels.
+    - 1: user clicked the item
+    - 0: user examined but did not click
+    - nan: item was not examined
 
-    predictions: Description
-    hit_matrix: Description
+    Args:
+        predictions: Recommended item indices (n_users, k)
+        hit_matrix: Binary relevance labels for predicted items (n_users, k)
+    Returns:
+        Interaction matrix (n_users, k) with values in {0, 1, nan}
     """
-    intearction_matrix_raw = get_user_interactions_from_predictions(
+    intearction_matrix_raw = simulate_user_interactions(
         predictions, hit_matrix
     )
     interaction_matrix = torch.where(
@@ -311,23 +331,6 @@ def calculate_preference_matrix(
     preference_matrix_updated[users, rec_positions] = 1 - updated_preferences
 
     return preference_matrix_updated
-
-
-def get_candidate_items(D):
-
-    user_item_pairs = D[[USER_COL, ITEM_COL]].drop_duplicates()
-    user_item_matrix = (
-        user_item_pairs.assign(interaction=-1)
-        .pivot(index=USER_COL, columns=ITEM_COL, values="interaction")
-        .fillna(1)
-        .astype(int)
-    )
-
-    mask_from_df = torch.tensor(
-        user_item_matrix.values, dtype=torch.int8, device=device
-    )
-    return mask_from_df
-
 
 def random_rec(candidates, n_users, k, mask=None):
     if mask is not None:

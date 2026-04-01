@@ -18,10 +18,10 @@ from calibratedRecs.reranking_utils import rerank_by_calibration
 from calibratedRecs.mappings import CALIBRATION_MODE_TO_COL_NAME
 from calibratedRecs.metrics import mace, get_avg_kl_div
 from dynamicTasteDistortion.simulation.simulationUtils import (
-    build_interaction_matrix,
+    encode_interaction_matrix,
     build_interaction_timestamp_matrix,
     get_forget_probability,
-    get_item_to_genre_tensor,
+    convert_item_genre_map_to_tensor,
     get_users_most_recent_interaction_timestamp,
     map_prediction_to_preferences,
     random_rec,
@@ -56,7 +56,6 @@ class Simulator:
         base_artifacts_path=None,
         num_interactions_bootstrapped=1_000_000,
         bootstrapped_df=None,
-        ignore_oracle_matrix=False,
         calibration_type=None,
         preference_update_rate=0,
     ):
@@ -74,9 +73,7 @@ class Simulator:
         # Maps each user_id to their average timestamp between interactions probability
         # distribution. Timestamps deltas are sampled from it.
         self.timestamp_distribution = user_timestamp_distribution
-        # Wether we should simulate the user via a preference + click model (True) or just the click model
-        # false (TODO: faz sentido isso estar aqui ainda?)
-        self.ignore_oracle_matrix = ignore_oracle_matrix
+
         self.user_idx_to_id = {
             idx: user_id
             for idx, user_id in enumerate(self.timestamp_distribution.keys())
@@ -137,7 +134,7 @@ class Simulator:
         )
 
         # Builds a multi hot encoding tensor of shape n_items x n_genres.
-        self.genre_tensor = get_item_to_genre_tensor(self.item2genreMap)
+        self.genre_tensor = convert_item_genre_map_to_tensor(self.item2genreMap)
 
         # Stores the probability of each user forgetting each item. This is time dependant
         # And depends on the genre affinity between the user and the item.
@@ -152,7 +149,7 @@ class Simulator:
         """
         Updates the simulated users' preference model based on interacted items in a
         recommendation tensor.
-        
+
         Args:
             predictions: Recommended items to evaluate.
             feedback_matrix: User feedback on recommendations.
@@ -179,11 +176,25 @@ class Simulator:
             self.interaction_recency_matrix, G
         )
 
-    def get_user_feedback_from_predictions(self, predictions):
-        assert (predictions >= 0).all(), "Item IDs must be non-negative"
-        hit_matrix = map_prediction_to_preferences(self.oracle_tensor, predictions)
+    def get_user_feedback_from_predictions(self, recommendation_tensor):
+        """
+        Returns which items in the recommendation tensor were interacted by the simulated users
 
-        interaction_matrix = build_interaction_matrix(predictions, hit_matrix)
+        Args:
+            recommendation_tensor (torch.tensor): items recommended to each users (n_users, k)
+
+        Returns:
+            interaction_matrix (torch.tensor): binary matrix of shape (n_users, k) where
+            each entry encodes wether the n-th user clicked on the k-th item in the recommendation 
+        """
+        assert (recommendation_tensor >= 0).all(), "Item IDs must be non-negative"
+        hit_matrix = map_prediction_to_preferences(
+            self.oracle_tensor, recommendation_tensor
+        )
+
+        interaction_matrix = encode_interaction_matrix(
+            recommendation_tensor, hit_matrix
+        )
         return interaction_matrix
 
     def simulate_user_feedback(self, rec, score, from_bootstrap=False):

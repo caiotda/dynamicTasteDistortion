@@ -62,7 +62,6 @@ def main():
         "exponential_time",
     ], "Invalid calibration type specified in config."
 
-    use_oracle_matrix = True if cfg.get("use_oracle_matrix", "n") == "y" else False
 
     rounds = int(cfg["rounds"])
     num_rounds_per_eval = int(cfg["num_rounds_per_eval"])
@@ -130,7 +129,6 @@ def main():
         user_timestamp_distribution=userToExpDistribution,
         bootstrapped_df=bootstrapped_df,
         base_artifacts_path=base_artifacts_path,
-        ignore_oracle_matrix=not use_oracle_matrix,
         calibration_type=calibration_type,
         preference_update_rate=preference_update_rate
     )
