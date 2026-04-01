@@ -27,7 +27,7 @@ from dynamicTasteDistortion.simulation.simulationUtils import (
     random_rec,
     update_genre_affinity_tensor,
     update_oracle_from_hits,
-    update_preference_matrix,
+    calculate_preference_matrix,
 )
 from dynamicTasteDistortion.simulationConstants import (
     USER_COL,
@@ -148,40 +148,45 @@ class Simulator:
         if base_artifacts_path is not None and not os.path.exists(base_artifacts_path):
             os.makedirs(self.base_artifacts_path)
 
-    def get_feedback_for_predictions(self, predictions):
-        assert (predictions >= 0).all(), "Item IDs must be non-negative"
-        # Simulates feedback only through click position.
-        if self.ignore_oracle_matrix:
-            hit_matrix = torch.ones_like(
-                predictions, dtype=torch.int8, device=self.device
-            )
-            should_update_preferences = False
-        else:
-            should_update_preferences = True
-            hit_matrix = map_prediction_to_preferences(self.oracle_tensor, predictions)
-
-
-        interaction_matrix = build_interaction_matrix(predictions, hit_matrix)
-
-        # Update user preferences on the recommended items
-        updated_hit_matrix = update_preference_matrix(
-            preference_matrix=hit_matrix,
-            interaction_matrix=interaction_matrix,
+    def update_user_model(self, predictions, feedback_matrix, users_ids, clicked_items):
+        """
+        Updates the simulated users' preference model based on interacted items in a
+        recommendation tensor.
+        
+        Args:
+            predictions: Recommended items to evaluate.
+            feedback_matrix: User feedback on recommendations.
+            users_ids: User identifiers being updated.
+            clicked_items: Items that users clicked/interacted with.
+        """
+        hit_matrix = calculate_preference_matrix(
+            oracle_tensor=self.oracle_tensor,
+            interaction_matrix=feedback_matrix,
             recommendation_list=predictions,
             preference_update_rate=self.preference_update_rate,
             preference_forgetting_probability=self.forgetting_probability,
         )
 
-        # Reflect preference changes on the oracle tensor.
-        self.oracle_tensor = (
-            update_oracle_from_hits(self.oracle_tensor, predictions, updated_hit_matrix)
-            if should_update_preferences
-            else self.oracle_tensor
+        self.oracle_tensor = update_oracle_from_hits(
+            self.oracle_tensor, predictions, hit_matrix
         )
 
+        user_tensor = torch.tensor(users_ids, device=self.device)
+        self.genre_affinity, G = update_genre_affinity_tensor(
+            user_tensor, self.genre_affinity, clicked_items, self.genre_tensor
+        )
+        self.forgetting_probability = get_forget_probability(
+            self.interaction_recency_matrix, G
+        )
+
+    def get_user_feedback_from_predictions(self, predictions):
+        assert (predictions >= 0).all(), "Item IDs must be non-negative"
+        hit_matrix = map_prediction_to_preferences(self.oracle_tensor, predictions)
+
+        interaction_matrix = build_interaction_matrix(predictions, hit_matrix)
         return interaction_matrix
 
-    def simulate_user_feedback(self, rec, score):
+    def simulate_user_feedback(self, rec, score, from_bootstrap=False):
         """
         Simulates user feedback for a batch of recommendations.
 
@@ -196,8 +201,8 @@ class Simulator:
             rec_df (pd.DataFrame): Full recommendation slate with columns:
                 user, item, rating (score). One row per (user, item) pair.
         """
-
-        feedback_matrix = self.get_feedback_for_predictions(rec)
+        should_update_user_model = not from_bootstrap
+        feedback_matrix = self.get_user_feedback_from_predictions(rec)
         # We retrieve only clicked interactions, flagged as 1
         indices = torch.nonzero(feedback_matrix == 1, as_tuple=False)
         users_indices, click_positions = indices[:, 0].tolist(), indices[:, 1].tolist()
@@ -223,13 +228,7 @@ class Simulator:
 
         self.interaction_recency_matrix[user_ids, items] = timestamps_tensor
         # Update interest retention given new timestamps
-        user_tensor = torch.tensor(users_indices, device=self.device)
-        self.genre_affinity, G = update_genre_affinity_tensor(
-            user_tensor, self.genre_affinity, items, self.genre_tensor
-        )
-        self.forgetting_probability = get_forget_probability(
-            self.interaction_recency_matrix, G
-        )
+
         entries = list(
             zip(
                 users_indices,
@@ -266,6 +265,15 @@ class Simulator:
                 "rating": score.reshape(-1).cpu().numpy(),
             }
         )
+        # We're only interested in updating the user model on the simulation, not on the bootstrapping
+        # step
+        if should_update_user_model:
+            self.update_user_model(
+                predictions=rec,
+                interaction_matrix=feedback_matrix,
+                users=user_ids,
+                clicked_items=clicked_items,
+            )
 
         return interaction_df, rec_df
 
@@ -301,7 +309,9 @@ class Simulator:
             while len(bootstrapped_df) < num_interactions_bootstrapped:
                 mask = self._mask_previously_seen_items(bootstrapped_df).to(self.device)
                 rec, score = random_rec(self.items, n_users, k, mask)
-                round_df, _ = self.simulate_user_feedback(rec=rec, score=score)
+                round_df, _ = self.simulate_user_feedback(
+                    rec=rec, score=score, from_bootstrap=True
+                )
                 round_positives = len(round_df)
                 bootstrapped_df = pd.concat(
                     [bootstrapped_df, round_df], ignore_index=True

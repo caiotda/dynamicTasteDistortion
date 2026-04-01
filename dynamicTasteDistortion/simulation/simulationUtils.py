@@ -1,7 +1,4 @@
 import torch
-from scipy.stats import expon
-
-import pandas as pd
 
 from dynamicTasteDistortion.simulationConstants import USER_COL, ITEM_COL
 
@@ -245,8 +242,8 @@ def click_model(predictions):
     return (lambda_tensor > examination_probability).int()
 
 
-def update_preference_matrix(
-    preference_matrix,
+def calculate_preference_matrix(
+    oracle_tensor,
     interaction_matrix,
     recommendation_list,
     preference_forgetting_probability,
@@ -257,7 +254,7 @@ def update_preference_matrix(
     - Acquisition: unpreferred but examined items may be liked with probability preference_update_rate.
     - Forgetting: preferred but unexamined items may be forgotten with probability preference_forgetting_probability.
     Args:
-        preference_matrix: Binary preference matrix (n_users, k)
+        oracle_tensor: Binary preference tensor (n_users, n_items)
         examination_matrix: Binary matrix indicating examined items (n_users, k)
         preference_forgetting_probability: Per (user, item) forgetting probability (n_users, n_items)
         preference_update_rate: Probability of acquiring a new preference (default: 0.2)
@@ -267,6 +264,8 @@ def update_preference_matrix(
     # Constains which items were interacted with.
     # We flip the interaction matrix, yielding which items were examined, but not clicked
     examination_matrix = 1 - interaction_matrix
+    preference_matrix = map_prediction_to_preferences(oracle_tensor, recommendation_list)
+
     assert (
         preference_matrix.shape == examination_matrix.shape
     ), f"Shape mismatch between preference matrix {preference_matrix.shape } and examination_matrix {examination_matrix.shape}"
