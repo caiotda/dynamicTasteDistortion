@@ -12,19 +12,19 @@ def update_genre_affinity_tensor(
     users, genre_affinity, interacted_items_tensor, item_genre_tensor
 ):
     """
-        Updates genre affinities based on new interactions and recomputes item affinity scores.
-        - Accumulates genre signals from interacted items into each user's affinity vector.
-        - Renormalizes affinities to sum to 1.
-        - Recomputes G[u, i] as the max genre affinity of user u across item i's genres.
+    Updates genre affinities based on new interactions and recomputes item affinity scores.
+    - Accumulates genre signals from interacted items into each user's affinity vector.
+    - Renormalizes affinities to sum to 1.
+    - Recomputes G[u, i] as the max genre affinity of user u across item i's genres.
 
-        Args:
-            users: User indices corresponding to each interaction (n_interactions,)
-            genre_affinity: Per-user genre affinity matrix (n_users, n_genres)
-            interacted_items_tensor: Item indices that were interacted with (n_interactions,)
-            item_genre_tensor: Binary item-genre membership matrix (n_items, n_genres)
-        Returns:
-            genre_affinity: Updated affinity matrix (n_users, n_genres)
-            G: Per (user, item) affinity score (n_users, n_items)
+    Args:
+        users: User indices corresponding to each interaction (n_interactions,)
+        genre_affinity: Per-user genre affinity matrix (n_users, n_genres)
+        interacted_items_tensor: Item indices that were interacted with (n_interactions,)
+        item_genre_tensor: Binary item-genre membership matrix (n_items, n_genres)
+    Returns:
+        genre_affinity: Updated affinity matrix (n_users, n_genres)
+        G: Per (user, item) affinity score (n_users, n_items)
     """
     # (n_interactions, n_genres)
     genre_tensor = item_genre_tensor[interacted_items_tensor].to(genre_affinity.device)
@@ -63,21 +63,21 @@ def convert_item_genre_map_to_tensor(item_2_genre_dict):
     return item_genre_matrix
 
 
-
 def map_prediction_to_preferences(oracle_tensor, prediction_tensor):
     """
-        Looks up relevance labels for predicted items.
-        Args:
-            oracle_tensor: Binary relevance matrix. torch.tensor, (n_users, n_items)
-            prediction_tensor: Top-k item indices per user. torch.tensor (n_users, k)
-        Returns:
-            Binary torch.tensor (n_users, k) — 1 if predicted item is relevant, 0 otherwise.
+    Looks up relevance labels for predicted items.
+    Args:
+        oracle_tensor: Binary relevance matrix. torch.tensor, (n_users, n_items)
+        prediction_tensor: Top-k item indices per user. torch.tensor (n_users, k)
+    Returns:
+        Binary torch.tensor (n_users, k) — 1 if predicted item is relevant, 0 otherwise.
     """
 
     indices = torch.arange(
         prediction_tensor.size(0), device=prediction_tensor.device
     ).unsqueeze(1)
     return oracle_tensor[indices, prediction_tensor].int()
+
 
 def update_oracle_from_hits(oracle_tensor, prediction_tensor, updated_hit_matrix):
     """
@@ -90,9 +90,12 @@ def update_oracle_from_hits(oracle_tensor, prediction_tensor, updated_hit_matrix
         Updated oracle tensor (n_users, n_items)
     """
     oracle_updated = oracle_tensor.detach().clone()
-    indices = torch.arange(prediction_tensor.size(0), device=prediction_tensor.device).unsqueeze(1)
+    indices = torch.arange(
+        prediction_tensor.size(0), device=prediction_tensor.device
+    ).unsqueeze(1)
     oracle_updated[indices, prediction_tensor] = updated_hit_matrix
     return oracle_updated
+
 
 def simulate_user_interactions(predictions, hit_matrix):
     """
@@ -149,7 +152,6 @@ def normalize_timestamps_per_user(recency_matrix):
 
 
 def get_forget_probability(interaction_recency_matrix, G):
-
     """
     Computes the probability of forgetting each (user, item) preference.
     Forgetting increases with recency (time since last interaction)
@@ -163,7 +165,7 @@ def get_forget_probability(interaction_recency_matrix, G):
     Returns:
         forget_probability: Per (user, item) forgetting probability (n_users, n_items)
     """
-    
+
     # We normalize timestamps so that scale doesnt matter when dealing with forgetting.
     normalized_interaction_recency_matrix = normalize_timestamps_per_user(
         interaction_recency_matrix
@@ -223,9 +225,7 @@ def encode_interaction_matrix(predictions, hit_matrix):
     Returns:
         Interaction matrix (n_users, k) with values in {0, 1, nan}
     """
-    intearction_matrix_raw = simulate_user_interactions(
-        predictions, hit_matrix
-    )
+    intearction_matrix_raw = simulate_user_interactions(predictions, hit_matrix)
     interaction_matrix = torch.where(
         intearction_matrix_raw == 0,
         torch.tensor(float("nan"), device=intearction_matrix_raw.device),
@@ -284,12 +284,14 @@ def calculate_preference_matrix(
     # Constains which items were interacted with.
     # We flip the interaction matrix, yielding which items were examined, but not clicked
     examination_matrix = 1 - interaction_matrix
-    preference_matrix = map_prediction_to_preferences(oracle_tensor, recommendation_list)
+    preference_matrix = map_prediction_to_preferences(
+        oracle_tensor, recommendation_list
+    )
 
     assert (
         preference_matrix.shape == examination_matrix.shape
     ), f"Shape mismatch between preference matrix {preference_matrix.shape } and examination_matrix {examination_matrix.shape}"
-    preference_matrix_updated = preference_matrix.detach().clone()
+    preference_matrix_updated = preference_matrix.detach().clone().to(torch.int64)
 
     # Preferences to acquire: Relevant items that were recommended, but not interacted with.
     preferences_to_acquire = (preference_matrix_updated == 0) & (
@@ -331,6 +333,7 @@ def calculate_preference_matrix(
     preference_matrix_updated[users, rec_positions] = 1 - updated_preferences
 
     return preference_matrix_updated
+
 
 def random_rec(candidates, n_users, k, mask=None):
     if mask is not None:

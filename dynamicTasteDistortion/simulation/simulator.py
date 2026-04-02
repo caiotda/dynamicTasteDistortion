@@ -79,7 +79,6 @@ class Simulator:
             for idx, user_id in enumerate(self.timestamp_distribution.keys())
         }
 
-        # TODO: double check de colisão entre idx e id
         users = list(self.user_idx_to_id.values())
         filtered_oracle_matrix = (
             oracle_matrix[oracle_matrix[USER_COL].isin(users)]
@@ -281,8 +280,8 @@ class Simulator:
         if should_update_user_model:
             self.update_user_model(
                 predictions=rec,
-                interaction_matrix=feedback_matrix,
-                users=user_ids,
+                feedback_matrix=feedback_matrix,
+                users_ids=user_ids,
                 clicked_items=clicked_items,
             )
 
