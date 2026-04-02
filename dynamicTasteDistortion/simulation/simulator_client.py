@@ -62,11 +62,12 @@ def main():
         "exponential_time",
     ], "Invalid calibration type specified in config."
 
-    use_oracle_matrix = True if cfg.get("use_oracle_matrix", "n") == "y" else False
 
     rounds = int(cfg["rounds"])
     num_rounds_per_eval = int(cfg["num_rounds_per_eval"])
     num_users = int(cfg["num_users"])
+
+    preference_update_rate = float(cfg.get("preference_update_rate", 0))
 
     timestamp_distribution = pd.read_csv(
         get_timestamp_behavior_path(data_type, file_size, num_users)
@@ -128,8 +129,8 @@ def main():
         user_timestamp_distribution=userToExpDistribution,
         bootstrapped_df=bootstrapped_df,
         base_artifacts_path=base_artifacts_path,
-        ignore_oracle_matrix=not use_oracle_matrix,
         calibration_type=calibration_type,
+        preference_update_rate=preference_update_rate
     )
     simulated_df, maces, kl_divs = sim.simulate(
         L=num_rounds_per_eval, rounds=rounds, k=20
