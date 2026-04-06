@@ -58,6 +58,8 @@ class Simulator:
         bootstrapped_df=None,
         calibration_type=None,
         preference_update_rate=0,
+        target_dist="rec",
+        reset_knowledge=False,
     ):
         # TODO: documentação dos parametros
         self.device = (
@@ -67,6 +69,8 @@ class Simulator:
         )
         # Probability of acquiring new preferences from examined, but unclicked items
         self.preference_update_rate = preference_update_rate
+        self.target_dist = target_dist
+        self.reset_knowledge = reset_knowledge
         # TODO: faz sentido esse parametro / valor do parametro?
         self.top_k_for_evaluation = 10
         self.calibration_type = calibration_type
@@ -142,7 +146,7 @@ class Simulator:
 
         # Basic persistent configurations
         if base_artifacts_path is not None and not os.path.exists(base_artifacts_path):
-            os.makedirs(self.base_artifacts_path)
+            os.makedirs(base_artifacts_path)
 
     def update_user_model(self, predictions, feedback_matrix, users_ids, clicked_items):
         """
@@ -414,16 +418,21 @@ class Simulator:
                 score=score,
             )
 
+            print(round_df.head())
+            print(rec_df.head())
+
+            realized_distribution = rec_df if self.target_dist == "rec" else round_df
+
             # We calculate the taste distortion between what's being recommended and the users initial taste
             rec_genre_distribution_tensor = build_user_genre_history_distribution(
-                df=rec_df,
+                df=realized_distribution,
                 p_g_i=self.p_g_i,
                 n_users=self.n_users,
                 n_items=self.n_items,
                 weight_col="rating",
             )
             iteration_mace = mace(
-                rec_df=rec_df,
+                rec_df=realized_distribution,
                 p_g_u=user_history_tensor,
                 p_g_i=self.p_g_i,
                 k=self.top_k_for_evaluation,
@@ -449,6 +458,7 @@ class Simulator:
                     self.model.to(initial_model.device)
                     print(boostrapped_df.head())
                     _ = self.model.fit(boostrapped_df, debug=False)
-                boostrapped_df = round_df
+                if self.reset_knowledge:
+                    boostrapped_df = round_df
 
         return boostrapped_df, maces, kl_divs

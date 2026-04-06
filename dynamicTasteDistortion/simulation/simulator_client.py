@@ -68,6 +68,8 @@ def main():
     num_users = int(cfg["num_users"])
 
     preference_update_rate = float(cfg.get("preference_update_rate", 0))
+    target_dist = cfg.get("target_dist", "rec")
+    reset_knowledge = True if cfg.get("target_dist", False) == "y" else False
 
     timestamp_distribution = pd.read_csv(
         get_timestamp_behavior_path(data_type, file_size, num_users)
@@ -130,7 +132,9 @@ def main():
         bootstrapped_df=bootstrapped_df,
         base_artifacts_path=base_artifacts_path,
         calibration_type=calibration_type,
-        preference_update_rate=preference_update_rate
+        preference_update_rate=preference_update_rate,
+        target_dist=target_dist,
+        reset_knowledge=reset_knowledge
     )
     simulated_df, maces, kl_divs = sim.simulate(
         L=num_rounds_per_eval, rounds=rounds, k=20
