@@ -1,0 +1,13 @@
+size: s
+data: ml
+
+rounds: 500
+num_rounds_per_eval: 5
+num_users: 1000
+
+model: bpr
+target_dist: round
+reset_knowledge: n
+preference_update_rate: 0.1
+
+exp_name: bpr_uncalibrated_comparing_with_round_df
