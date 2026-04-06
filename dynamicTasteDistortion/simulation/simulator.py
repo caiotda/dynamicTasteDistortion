@@ -276,8 +276,9 @@ class Simulator:
             }
         )
         # We're only interested in updating the user model on the simulation, not on the bootstrapping
-        # step
-        if should_update_user_model:
+        # step. Also, if we don´t pass the preference_update_rate parameter, we assume that 
+        # we are simulating the baseline case: user preference remains static through time.
+        if should_update_user_model and self.preference_update_rate != 0:
             self.update_user_model(
                 predictions=rec,
                 feedback_matrix=feedback_matrix,
@@ -390,6 +391,8 @@ class Simulator:
         # This ensures that we always have a fresh model at each retrain, without knowing
         # its parameters
         initial_model = copy.deepcopy(self.model)
+        if not self.use_random_rec:
+            _ = self.model.fit(boostrapped_df, debug=False)
 
         # Builds the tensor that tells the importance of its genre according to the users history
         # (H0) and the importance strategy used (weight col)
@@ -400,10 +403,10 @@ class Simulator:
             n_items=self.n_items,
             weight_col=weight_col,
         )
-
+        mask = None
+        boostrapped_df = pd.DataFrame({}, columns=boostrapped_df.columns)
         for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
             # We avoid recommending repeated items in the same interaction.
-            mask = self._mask_previously_seen_items(boostrapped_df)
             rec, score = self._recommend(users_history=H_0, k=k, mask=mask)
 
             round_df, rec_df = self.simulate_user_feedback(
@@ -437,11 +440,14 @@ class Simulator:
 
             # At every L rounds, we retrain the model and reset the accumulated clicks, which is done
             # to avoid an ever growing set of clicks to train the model on.
+            mask = self._mask_previously_seen_items(boostrapped_df)
+
             if round_idx % L == 0:
                 if not self.use_random_rec:
                     print("retraining model...")
                     self.model = copy.deepcopy(initial_model)
                     self.model.to(initial_model.device)
+                    print(boostrapped_df.head())
                     _ = self.model.fit(boostrapped_df, debug=False)
                 boostrapped_df = round_df
 
