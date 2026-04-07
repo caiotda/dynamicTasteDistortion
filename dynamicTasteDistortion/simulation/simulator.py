@@ -58,7 +58,6 @@ class Simulator:
         bootstrapped_df=None,
         calibration_type=None,
         preference_update_rate=0,
-        target_dist="rec",
         reset_knowledge=False,
     ):
         # TODO: documentação dos parametros
@@ -396,6 +395,7 @@ class Simulator:
         # its parameters
         initial_model = copy.deepcopy(self.model)
         if not self.use_random_rec:
+            print("Training model on bootstrapped df")
             _ = self.model.fit(boostrapped_df, debug=False)
 
         # Builds the tensor that tells the importance of its genre according to the users history
@@ -418,21 +418,16 @@ class Simulator:
                 score=score,
             )
 
-            print(round_df.head())
-            print(rec_df.head())
-
-            realized_distribution = rec_df if self.target_dist == "rec" else round_df
-
             # We calculate the taste distortion between what's being recommended and the users initial taste
             rec_genre_distribution_tensor = build_user_genre_history_distribution(
-                df=realized_distribution,
+                df=rec_df,
                 p_g_i=self.p_g_i,
                 n_users=self.n_users,
                 n_items=self.n_items,
                 weight_col="rating",
             )
             iteration_mace = mace(
-                rec_df=realized_distribution,
+                rec_df=rec_df,
                 p_g_u=user_history_tensor,
                 p_g_i=self.p_g_i,
                 k=self.top_k_for_evaluation,
@@ -456,7 +451,6 @@ class Simulator:
                     print("retraining model...")
                     self.model = copy.deepcopy(initial_model)
                     self.model.to(initial_model.device)
-                    print(boostrapped_df.head())
                     _ = self.model.fit(boostrapped_df, debug=False)
                 if self.reset_knowledge:
                     boostrapped_df = round_df
