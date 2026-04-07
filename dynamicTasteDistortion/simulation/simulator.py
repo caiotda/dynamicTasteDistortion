@@ -58,6 +58,7 @@ class Simulator:
         bootstrapped_df=None,
         calibration_type=None,
         preference_update_rate=0,
+        compare_to_h_0=True,
     ):
         # TODO: documentação dos parametros
         self.device = (
@@ -67,6 +68,7 @@ class Simulator:
         )
         # Probability of acquiring new preferences from examined, but unclicked items
         self.preference_update_rate = preference_update_rate
+        self.compare_to_h0 = compare_to_h_0
         # TODO: faz sentido esse parametro / valor do parametro?
         self.top_k_for_evaluation = 10
         self.calibration_type = calibration_type
@@ -142,7 +144,7 @@ class Simulator:
 
         # Basic persistent configurations
         if base_artifacts_path is not None and not os.path.exists(base_artifacts_path):
-            os.makedirs(self.base_artifacts_path)
+            os.makedirs(base_artifacts_path)
 
     def update_user_model(self, predictions, feedback_matrix, users_ids, clicked_items):
         """
@@ -392,6 +394,7 @@ class Simulator:
         # its parameters
         initial_model = copy.deepcopy(self.model)
         if not self.use_random_rec:
+            print("Training model on bootstrapped df")
             _ = self.model.fit(boostrapped_df, debug=False)
 
         # Builds the tensor that tells the importance of its genre according to the users history
@@ -413,6 +416,7 @@ class Simulator:
                 rec=rec,
                 score=score,
             )
+
 
             # We calculate the taste distortion between what's being recommended and the users initial taste
             rec_genre_distribution_tensor = build_user_genre_history_distribution(
@@ -443,12 +447,19 @@ class Simulator:
             mask = self._mask_previously_seen_items(boostrapped_df)
 
             if round_idx % L == 0:
+                if not self.compare_to_h0:
+                    user_history_tensor = build_user_genre_history_distribution(
+                        boostrapped_df,
+                        self.p_g_i,
+                        n_users=self.n_users,
+                        n_items=self.n_items,
+                        weight_col=weight_col,
+                    )
                 if not self.use_random_rec:
                     print("retraining model...")
                     self.model = copy.deepcopy(initial_model)
                     self.model.to(initial_model.device)
-                    print(boostrapped_df.head())
                     _ = self.model.fit(boostrapped_df, debug=False)
-                boostrapped_df = round_df
+
 
         return boostrapped_df, maces, kl_divs
