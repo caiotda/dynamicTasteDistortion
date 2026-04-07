@@ -6,8 +6,8 @@ num_rounds_per_eval: 5
 num_users: 1000
 
 model: bpr
-compare_to_h_0: n
-reset_knowledge: y
+compare_to_h_0: y
+reset_knowledge: n
 preference_update_rate: 0.1
 
-exp_name: bpr_uncalibrated_comparing_with_round_df
+exp_name: bpr_uncalibrated_comparing_with_h_0_no_reset

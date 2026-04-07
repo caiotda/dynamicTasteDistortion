@@ -59,6 +59,7 @@ class Simulator:
         calibration_type=None,
         preference_update_rate=0,
         reset_knowledge=False,
+        compare_to_h_0=True,
     ):
         # TODO: documentação dos parametros
         self.device = (
@@ -68,7 +69,7 @@ class Simulator:
         )
         # Probability of acquiring new preferences from examined, but unclicked items
         self.preference_update_rate = preference_update_rate
-        self.target_dist = target_dist
+        self.compare_to_h0 = compare_to_h_0
         self.reset_knowledge = reset_knowledge
         # TODO: faz sentido esse parametro / valor do parametro?
         self.top_k_for_evaluation = 10
@@ -418,6 +419,7 @@ class Simulator:
                 score=score,
             )
 
+
             # We calculate the taste distortion between what's being recommended and the users initial taste
             rec_genre_distribution_tensor = build_user_genre_history_distribution(
                 df=rec_df,
@@ -447,6 +449,14 @@ class Simulator:
             mask = self._mask_previously_seen_items(boostrapped_df)
 
             if round_idx % L == 0:
+                if not self.compare_to_h0:
+                    user_history_tensor = build_user_genre_history_distribution(
+                        boostrapped_df,
+                        self.p_g_i,
+                        n_users=self.n_users,
+                        n_items=self.n_items,
+                        weight_col=weight_col,
+                    )
                 if not self.use_random_rec:
                     print("retraining model...")
                     self.model = copy.deepcopy(initial_model)
@@ -454,5 +464,6 @@ class Simulator:
                     _ = self.model.fit(boostrapped_df, debug=False)
                 if self.reset_knowledge:
                     boostrapped_df = round_df
+
 
         return boostrapped_df, maces, kl_divs
