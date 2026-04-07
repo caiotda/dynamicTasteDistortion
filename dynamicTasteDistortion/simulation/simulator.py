@@ -58,7 +58,6 @@ class Simulator:
         bootstrapped_df=None,
         calibration_type=None,
         preference_update_rate=0,
-        reset_knowledge=False,
         compare_to_h_0=True,
     ):
         # TODO: documentação dos parametros
@@ -70,7 +69,6 @@ class Simulator:
         # Probability of acquiring new preferences from examined, but unclicked items
         self.preference_update_rate = preference_update_rate
         self.compare_to_h0 = compare_to_h_0
-        self.reset_knowledge = reset_knowledge
         # TODO: faz sentido esse parametro / valor do parametro?
         self.top_k_for_evaluation = 10
         self.calibration_type = calibration_type
@@ -462,8 +460,6 @@ class Simulator:
                     self.model = copy.deepcopy(initial_model)
                     self.model.to(initial_model.device)
                     _ = self.model.fit(boostrapped_df, debug=False)
-                if self.reset_knowledge:
-                    boostrapped_df = round_df
 
 
         return boostrapped_df, maces, kl_divs

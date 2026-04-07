@@ -68,7 +68,6 @@ def main():
     num_users = int(cfg["num_users"])
 
     preference_update_rate = float(cfg.get("preference_update_rate", 0))
-    reset_knowledge = True if cfg.get("reset_knowledge", False) == "y" else False
     compare_to_h_0 = True if cfg.get("compare_to_h_0", "y") == "y" else False
 
     timestamp_distribution = pd.read_csv(
@@ -133,7 +132,6 @@ def main():
         base_artifacts_path=base_artifacts_path,
         calibration_type=calibration_type,
         preference_update_rate=preference_update_rate,
-        reset_knowledge=reset_knowledge,
         compare_to_h_0 = compare_to_h_0,
     )
     simulated_df, maces, kl_divs = sim.simulate(
