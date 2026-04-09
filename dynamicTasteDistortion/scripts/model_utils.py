@@ -13,6 +13,7 @@ from itertools import product
 from tqdm import tqdm
 
 from bprMf.model import BaseModel
+from bprMf.bprMf.utils.data import temporal_train_val_test_split
 
 
 from dynamicTasteDistortion.simulationConstants import (
@@ -54,6 +55,83 @@ class MostPopularRecommender(BaseModel):
         return self.item_2_popularity[items]
 
 
+bpr_param_grid = {
+    "factors": [16, 32, 64, 128],
+    "lr": [1e-5, 1e-4, 1e-3, 1e-2],
+    "reg_lambda": [1e-5, 1e-4, 1e-3, 1e-2],
+    "num_negatives": [1, 5, 10],
+    "n_epochs": [5, 7, 10],
+}
+
+
+class HyperParameterTuner:
+    def __init__(self, df, model, params=bpr_param_grid):
+        self.params = params
+        self.model = model
+        self.seed = 42
+        self.df = df
+        self.dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        self.n_users = df.user.max() + 1
+        self.n_items = df.item.max() + 1
+
+    def tune(self, val_pct=0.1, test_pct=0.1, n_samples=20, k=20):
+        train_df, val_df, test_df = temporal_train_val_test_split(
+            self.df,
+            USER_COL,
+            ITEM_COL,
+            val_pct=val_pct,
+            test_pct=test_pct,
+        )
+        rng = np.random.default_rng(self.seed)
+        results = []
+
+        for i in range(n_samples):
+            params = {
+                "factors": int(rng.choice(self.params["factors"])),
+                "lr": float(rng.choice(self.params["lr"])),
+                "reg_lambda": float(rng.choice(self.params["reg_lambda"])),
+                "num_negatives": int(rng.choice(self.params["num_negatives"])),
+                "n_epochs": int(rng.choice(self.params["n_epochs"])),
+            }
+
+            print(f"[{i+1}/{n_samples}] Testing: {params}")
+
+            model = self.model(
+                num_users=self.n_users,
+                num_items=self.n_items,
+                dev=self.dev,
+                **params,
+            )
+            model.fit(train_df)
+            map_score = model.evaluate(train_df=train_df, test_df=val_df, k=k)
+
+            print(f"  MAP@{k}: {map_score:.4f}")
+            results.append({**params, "map": map_score})
+
+        results_df = pd.DataFrame(results).sort_values("map", ascending=False)
+
+        # retrain best model on train+val, evaluate on test
+        best_params = results_df.iloc[0].drop("map").to_dict()
+        best_params = {
+            k: (int(v) if k != "lr" and k != "reg_lambda" else float(v))
+            for k, v in best_params.items()
+        }
+        print(f"\nBest params: {best_params}")
+        print(f"Best val MAP@{k}: {results_df.iloc[0]['map']:.4f}")
+
+        train_val_df = pd.concat([train_df, val_df])
+        final_model = bprMf(
+            num_users=n_users, num_items=n_items, dev=dev, **best_params
+        )
+        final_model.fit(train_val_df)
+        test_map = final_model.evaluate(train_df=train_val_df, test_df=test_df, k=k)
+        print(f"Final test MAP@{k}: {test_map:.4f}")
+
+        return final_model, results_df
+
+
+# Oracle model based
 class ModelChooser:
     def __init__(self, name):
         self.name = name
