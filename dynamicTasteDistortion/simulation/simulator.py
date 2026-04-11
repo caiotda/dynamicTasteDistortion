@@ -13,9 +13,7 @@ from calibratedRecs.calibrationUtils import (
     build_user_genre_history_distribution,
 )
 
-from calibratedRecs.weight_functions import get_linear_time_weight_rating
 from calibratedRecs.reranking_utils import rerank_by_calibration
-from calibratedRecs.mappings import CALIBRATION_MODE_TO_COL_NAME
 from calibratedRecs.metrics import mace, get_avg_kl_div
 from dynamicTasteDistortion.simulation.simulationUtils import (
     encode_interaction_matrix,
@@ -186,7 +184,7 @@ class Simulator:
 
         Returns:
             interaction_matrix (torch.tensor): binary matrix of shape (n_users, k) where
-            each entry encodes wether the n-th user clicked on the k-th item in the recommendation 
+            each entry encodes wether the n-th user clicked on the k-th item in the recommendation
         """
         assert (recommendation_tensor >= 0).all(), "Item IDs must be non-negative"
         hit_matrix = map_prediction_to_preferences(
@@ -278,7 +276,7 @@ class Simulator:
             }
         )
         # We're only interested in updating the user model on the simulation, not on the bootstrapping
-        # step. Also, if we don´t pass the preference_update_rate parameter, we assume that 
+        # step. Also, if we don´t pass the preference_update_rate parameter, we assume that
         # we are simulating the baseline case: user preference remains static through time.
         if should_update_user_model and self.preference_update_rate != 0:
             self.update_user_model(
@@ -386,16 +384,12 @@ class Simulator:
         """
 
         boostrapped_df = self.click_matrix.copy()
-        weight_col = CALIBRATION_MODE_TO_COL_NAME.get(self.calibration_type, "constant")
         H_0 = boostrapped_df.copy()
         maces = []
         kl_divs = []
         # This ensures that we always have a fresh model at each retrain, without knowing
         # its parameters
         initial_model = copy.deepcopy(self.model)
-        if not self.use_random_rec:
-            print("Training model on bootstrapped df")
-            _ = self.model.fit(boostrapped_df, debug=False)
 
         # Builds the tensor that tells the importance of its genre according to the users history
         # (H0) and the importance strategy used (weight col)
@@ -404,7 +398,7 @@ class Simulator:
             self.p_g_i,
             n_users=self.n_users,
             n_items=self.n_items,
-            weight_col=weight_col,
+            weight_col=self.calibration_type,
         )
         mask = None
         boostrapped_df = pd.DataFrame({}, columns=boostrapped_df.columns)
@@ -416,7 +410,6 @@ class Simulator:
                 rec=rec,
                 score=score,
             )
-
 
             # We calculate the taste distortion between what's being recommended and the users initial taste
             rec_genre_distribution_tensor = build_user_genre_history_distribution(
@@ -453,13 +446,12 @@ class Simulator:
                         self.p_g_i,
                         n_users=self.n_users,
                         n_items=self.n_items,
-                        weight_col=weight_col,
+                        weight_col=self.calibration_type,
                     )
                 if not self.use_random_rec:
                     print("retraining model...")
                     self.model = copy.deepcopy(initial_model)
                     self.model.to(initial_model.device)
                     _ = self.model.fit(boostrapped_df, debug=False)
-
 
         return boostrapped_df, maces, kl_divs
