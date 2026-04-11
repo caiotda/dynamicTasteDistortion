@@ -77,6 +77,33 @@ def load_pickle_artifact(base_path):
     return pickle_artifact
 
 
+def save_pickle_artifact(artifact, path):
+    with open(path, "wb") as f:
+        pickle.dump(artifact, f)
+
+
+def get_base_model_path(data_type, file_size, num_users, model_type):
+    return f"{MODEL_ARTIFACTS_PATH}/{model_type}_{data_type}_{file_size}_n_users={num_users}"
+
+
+def get_model_path(data_type, file_size, num_users, model_type):
+    base_path = get_base_model_path(data_type, file_size, num_users, model_type)
+    str_path = f"{base_path}_model.pkl"
+    return str_path
+
+
+def get_best_params_path(data_type, file_size, num_users, model_type):
+    base_path = get_base_model_path(data_type, file_size, num_users, model_type)
+    str_path = f"{base_path}_params.pkl"
+    return str_path
+
+
+def get_cv_results_path(data_type, file_size, num_users, model_type):
+    base_path = get_base_model_path(data_type, file_size, num_users, model_type)
+    str_path = f"{base_path}_cv_results.csv"
+    return str_path
+
+
 def get_oracle_matrix_path(data_type, file_size, num_users):
     return f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_oracle.pkl"
 

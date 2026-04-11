@@ -5,18 +5,20 @@ import pickle
 from pathlib import Path
 
 from dynamicTasteDistortion.simulationConstants import (
-    ITEM_COL,
-    USER_COL,
     input_size_to_file_name,
     RESULTS_PATH,
 )
 from dynamicTasteDistortion.simulation.simulator import Simulator
 
 from dynamicTasteDistortion.ioUtils import (
+    get_best_params_path,
+    get_model_path,
     get_oracle_matrix_path,
     get_timestamp_behavior_path,
     load_bootstrapped_clicks,
     load_pickle_artifact,
+    get_cv_results_path,
+    save_pickle_artifact,
 )
 
 from dynamicTasteDistortion.dataset_loader import load_df
@@ -25,9 +27,15 @@ from dynamicTasteDistortion.dataset_loader import load_df
 from scipy.stats import expon
 
 from bprMf.bpr_mf import bprMFWithClickDebiasing, bprMf
-from dynamicTasteDistortion.scripts.model_utils import MostPopularRecommender
+from dynamicTasteDistortion.scripts.model_utils import (
+    HyperParameterTuner,
+    MostPopularRecommender,
+)
 from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 import yaml
+
+
+model_type_to_class = {"bpr": bprMFWithClickDebiasing, "bpr_classic": bprMf}
 
 
 def main():
@@ -62,7 +70,6 @@ def main():
         "exponential_time",
     ], "Invalid calibration type specified in config."
 
-
     rounds = int(cfg["rounds"])
     num_rounds_per_eval = int(cfg["num_rounds_per_eval"])
     num_users = int(cfg["num_users"])
@@ -78,36 +85,61 @@ def main():
     )
     bootstrapped_df = load_bootstrapped_clicks(data_type, file_size, num_users)
 
-    n_users = oracle_matrix[USER_COL].max() + 1
-    n_items = oracle_matrix[ITEM_COL].max() + 1
+    model_path = get_model_path(data_type, file_size, num_users, model_type)
+    best_params_path = get_best_params_path(data_type, file_size, num_users, model_type)
+    model_path_obj = Path(model_path)
+    best_params_path_obj = Path(best_params_path)
 
-    if model_type == "bpr":
-        model = bprMFWithClickDebiasing(
-            num_users=n_users,
-            num_items=n_items,
-            factors=30,
-            n_epochs=1,
-            reg_lambda=5e-4,
-            dev=device,
-            lr=1e-3,
+    if model_path_obj.exists():
+        print(
+            f"Best model {model_type} found for {data_type}_{file_size} with {num_users} at {model_path}."
         )
-    elif model_type == "bpr_classic":
-        model = bprMf(
-            num_users=n_users,
-            num_items=n_items,
-            factors=30,
-            n_epochs=1,
-            reg_lambda=5e-4,
-            dev=device,
-            lr=1e-3,
+        print(f"model params: {load_pickle_artifact(best_params_path)}")
+        overwrite = (
+            input("Model artifact already exists. Overwrite and retrain? [y/N]: ")
+            .strip()
+            .lower()
         )
-    elif model_type == "most_popular":
-        print(f"Loading {data_type}_{file_size} dataset to fit Most Popular model...")
-        df = load_df(data_type, size)
-        processed_df, _, _ = standardize_ids(df)
-        model = MostPopularRecommender(processed_df)
-    else:
-        model = None
+        if overwrite in ("n", "no", ""):
+            print("Using existing model and skipping hyperparameter tuning.")
+            model = load_pickle_artifact(model_path)
+        else:
+            print("Deleting existing model artifact and retraining.")
+            model_path_obj.unlink()
+            best_params_path_obj.unlink()
+            if model_type in ("bpr", "bpr_classic"):
+                cv_results_save_path = get_cv_results_path(
+                    data_type, file_size, num_users, model_type
+                )
+                cv_results_path_obj = Path(cv_results_save_path)
+                if cv_results_path_obj.exists():
+                    cv_results_path_obj.unlink()
+
+    if not model_path_obj.exists():
+
+        if model_type in ("bpr", "bpr_classic"):
+            print(
+                f"No {model_type} found for {data_type}_{file_size} with {num_users} sampled users. Starting hyperparameter tuning."
+            )
+            ModelClass = model_type_to_class[model_type]
+            tuner = HyperParameterTuner(bootstrapped_df, ModelClass)
+            model, cv_results, best_params = tuner.tune()
+            save_pickle_artifact(best_params, best_params_path)
+            save_pickle_artifact(model, model_path)
+            cv_results_save_path = get_cv_results_path(
+                data_type, file_size, num_users, model_type
+            )
+            cv_results.to_csv(cv_results_save_path)
+
+        elif model_type == "most_popular":
+            print(
+                f"Loading {data_type}_{file_size} dataset to fit Most Popular model..."
+            )
+            df = load_df(data_type, size)
+            processed_df, _, _ = standardize_ids(df)
+            model = MostPopularRecommender(processed_df)
+        else:
+            model = None
 
     userToExpDistribution = {
         user: expon(scale=row["median_timestamp_diff"])
@@ -132,7 +164,7 @@ def main():
         base_artifacts_path=base_artifacts_path,
         calibration_type=calibration_type,
         preference_update_rate=preference_update_rate,
-        compare_to_h_0 = compare_to_h_0,
+        compare_to_h_0=compare_to_h_0,
     )
     simulated_df, maces, kl_divs = sim.simulate(
         L=num_rounds_per_eval, rounds=rounds, k=20
@@ -141,8 +173,5 @@ def main():
     print(f"Done! Saving simulated interactions...")
     simulated_df.to_pickle(base_artifacts_path / "simulated_interactions.pkl")
 
-    with open(base_artifacts_path / "maces.pkl", "wb") as f:
-        pickle.dump(maces, f)
-
-    with open(base_artifacts_path / "kl_divs.pkl", "wb") as f:
-        pickle.dump(kl_divs, f)
+    save_pickle_artifact(maces, f"{base_artifacts_path}/maces.pkl")
+    save_pickle_artifact(kl_divs, f"{base_artifacts_path}/kl_divs.pkl")
