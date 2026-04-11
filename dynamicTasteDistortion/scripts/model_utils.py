@@ -10,10 +10,11 @@ from sklearn.model_selection import KFold
 from surprise import NMF, Reader, SVDpp, Dataset as SurpriseDataset
 from itertools import product
 
-from tqdm import tqdm
+from tqdm import tqdm, trange
+
 
 from bprMf.model import BaseModel
-from bprMf.bprMf.utils.data import temporal_train_val_test_split
+from bprMf.utils.data import temporal_train_val_test_split
 
 
 from dynamicTasteDistortion.simulationConstants import (
@@ -67,7 +68,7 @@ bpr_param_grid = {
 class HyperParameterTuner:
     def __init__(self, df, model, params=bpr_param_grid):
         self.params = params
-        self.model = model
+        self.ModelClass = model
         self.seed = 42
         self.df = df
         self.dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -77,16 +78,14 @@ class HyperParameterTuner:
 
     def tune(self, val_pct=0.1, test_pct=0.1, n_samples=20, k=20):
         train_df, val_df, test_df = temporal_train_val_test_split(
-            self.df,
-            USER_COL,
-            ITEM_COL,
+            df=self.df,
+            user_col=USER_COL,
             val_pct=val_pct,
             test_pct=test_pct,
         )
         rng = np.random.default_rng(self.seed)
         results = []
-
-        for i in range(n_samples):
+        for i in trange(n_samples, desc="Processing tuning rounds"):
             params = {
                 "factors": int(rng.choice(self.params["factors"])),
                 "lr": float(rng.choice(self.params["lr"])),
@@ -96,8 +95,7 @@ class HyperParameterTuner:
             }
 
             print(f"[{i+1}/{n_samples}] Testing: {params}")
-
-            model = self.model(
+            model = self.ModelClass(
                 num_users=self.n_users,
                 num_items=self.n_items,
                 dev=self.dev,
@@ -121,14 +119,15 @@ class HyperParameterTuner:
         print(f"Best val MAP@{k}: {results_df.iloc[0]['map']:.4f}")
 
         train_val_df = pd.concat([train_df, val_df])
-        final_model = bprMf(
-            num_users=n_users, num_items=n_items, dev=dev, **best_params
+        final_model = self.ModelClass(
+            num_users=self.n_users, num_items=self.n_items, dev=self.dev, **best_params
         )
+        print(f"Training on train+val set...")
         final_model.fit(train_val_df)
         test_map = final_model.evaluate(train_df=train_val_df, test_df=test_df, k=k)
         print(f"Final test MAP@{k}: {test_map:.4f}")
 
-        return final_model, results_df
+        return final_model, results_df, best_params
 
 
 # Oracle model based
