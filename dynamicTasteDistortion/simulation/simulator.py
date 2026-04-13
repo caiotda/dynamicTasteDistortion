@@ -1,3 +1,6 @@
+from dynamicTasteDistortion.dynamicTasteDistortion.scripts.metrics_utils import (
+    catalog_coverage,
+)
 import torch
 import os
 import copy
@@ -36,6 +39,7 @@ from dynamicTasteDistortion.simulationConstants import (
 )
 from dynamicTasteDistortion.simulation.tensorUtils import (
     pandas_df_to_sparse_tensor,
+    sparse_tensor_to_pandas_df,
 )
 
 
@@ -387,6 +391,8 @@ class Simulator:
         H_0 = bootstrapped_df.copy()
         maces = []
         kl_divs = []
+        maps = []
+        coverages = []
         # This ensures that we always have a fresh model at each retrain, without knowing
         # its parameters
         initial_model = copy.deepcopy(self.model)
@@ -431,8 +437,6 @@ class Simulator:
             iteration_avg_kl_div = get_avg_kl_div(
                 self.users, user_history_tensor, rec_genre_distribution_tensor
             )
-            kl_divs.append(iteration_avg_kl_div)
-            maces.append(iteration_mace)
 
             # What was interacted with (round_df) gets added to the running click df.
             bootstrapped_df = pd.concat([bootstrapped_df, round_df], ignore_index=True)
@@ -440,6 +444,18 @@ class Simulator:
             # At every L rounds, we retrain the model and reset the accumulated clicks, which is done
             # to avoid an ever growing set of clicks to train the model on.
             mask = self._mask_previously_seen_items(bootstrapped_df)
+            oracle_matrix = sparse_tensor_to_pandas_df(self.oracle_tensor)
+            map_k = self.model.evaluate(
+                train_df=bootstrapped_df,
+                test_df=oracle_matrix,
+                k=self.top_k_for_evaluation,
+            )
+            coverage = catalog_coverage(rec, candidates=self.items)
+
+            coverages.append(coverage)
+            maps.append(map_k)
+            kl_divs.append(iteration_avg_kl_div)
+            maces.append(iteration_mace)
 
             if round_idx % L == 0:
                 if not self.compare_to_h0:
@@ -458,7 +474,8 @@ class Simulator:
                     print("retraining model...")
                     self.model = copy.deepcopy(initial_model)
                     self.model.to(initial_model.device)
-
+                    print(f"Oracle tensor: {self.oracle_tensor}")
+                    print(f"bootstrapped_df (train_df): {bootstrapped_df}")
                     _ = self.model.fit(bootstrapped_df, debug=False)
 
-        return bootstrapped_df, maces, kl_divs
+        return bootstrapped_df, maces, kl_divs, maps, coverages
