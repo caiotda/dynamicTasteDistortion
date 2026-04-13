@@ -21,3 +21,16 @@ def remove_outliers(metric):
     metric_cleaned = [x for x in metric if lower_bound <= x <= upper_bound]
 
     return metric_cleaned
+
+
+def catalog_coverage(rec, candidates):
+    """
+    Calculate the catalog coverage of recommendations.
+    Args:
+        rec (torch.Tensor): Recommendations tensor of shape (n_users, k) containing item indices.
+        candidates (torch.Tensor): Tensor of all available candidate items.
+    Returns:
+        float: Ratio of unique recommended items to total candidates.
+    """
+
+    return rec.unique().shape[0] / len(candidates)
