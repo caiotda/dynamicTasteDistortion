@@ -1,8 +1,9 @@
 import torch
+import pandas as pd
 from dynamicTasteDistortion.simulationConstants import USER_COL, ITEM_COL
 
 
-def pandas_df_to_sparse_tensor(df):
+def pandas_df_to_sparse_tensor(df: pd.DataFrame) -> torch.Tensor:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ratings_tensor = torch.tensor(
         df[[USER_COL, ITEM_COL, "rating"]].to_numpy(), device=device
@@ -28,3 +29,14 @@ def pandas_df_to_sparse_tensor(df):
     ratings_mat[users, items] = ratings
 
     return ratings_mat
+
+
+def sparse_tensor_to_pandas_df(ratings_mat: torch.Tensor) -> pd.DataFrame:
+    user_indices, item_indices = torch.nonzero(ratings_mat, as_tuple=True)
+    ratings = ratings_mat[user_indices, item_indices]
+
+    return pd.DataFrame({
+        USER_COL: user_indices.cpu().numpy(),
+        ITEM_COL: item_indices.cpu().numpy(),
+        "rating": ratings.cpu().numpy(),
+    })

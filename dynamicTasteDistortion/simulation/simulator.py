@@ -1,3 +1,6 @@
+from dynamicTasteDistortion.dynamicTasteDistortion.scripts.metrics_utils import (
+    catalog_coverage,
+)
 import torch
 import os
 import copy
@@ -36,6 +39,7 @@ from dynamicTasteDistortion.simulationConstants import (
 )
 from dynamicTasteDistortion.simulation.tensorUtils import (
     pandas_df_to_sparse_tensor,
+    sparse_tensor_to_pandas_df,
 )
 
 
@@ -383,10 +387,12 @@ class Simulator:
             List of MACE metric values computed every L rounds to evaluate recommendation quality.
         """
 
-        boostrapped_df = self.click_matrix.copy()
-        H_0 = boostrapped_df.copy()
+        bootstrapped_df = self.click_matrix.copy()
+        H_0 = bootstrapped_df.copy()
         maces = []
         kl_divs = []
+        maps = []
+        coverages = []
         # This ensures that we always have a fresh model at each retrain, without knowing
         # its parameters
         initial_model = copy.deepcopy(self.model)
@@ -398,10 +404,12 @@ class Simulator:
             self.p_g_i,
             n_users=self.n_users,
             n_items=self.n_items,
-            weight_col=self.calibration_type,
+            weight_col=(
+                "constant" if self.calibration_type is None else self.calibration_type
+            ),
         )
         mask = None
-        boostrapped_df = pd.DataFrame({}, columns=boostrapped_df.columns)
+        bootstrapped_df = pd.DataFrame({}, columns=bootstrapped_df.columns)
         for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
             # We avoid recommending repeated items in the same interaction.
             rec, score = self._recommend(users_history=H_0, k=k, mask=mask)
@@ -429,29 +437,45 @@ class Simulator:
             iteration_avg_kl_div = get_avg_kl_div(
                 self.users, user_history_tensor, rec_genre_distribution_tensor
             )
-            kl_divs.append(iteration_avg_kl_div)
-            maces.append(iteration_mace)
 
             # What was interacted with (round_df) gets added to the running click df.
-            boostrapped_df = pd.concat([boostrapped_df, round_df], ignore_index=True)
+            bootstrapped_df = pd.concat([bootstrapped_df, round_df], ignore_index=True)
 
             # At every L rounds, we retrain the model and reset the accumulated clicks, which is done
             # to avoid an ever growing set of clicks to train the model on.
-            mask = self._mask_previously_seen_items(boostrapped_df)
+            mask = self._mask_previously_seen_items(bootstrapped_df)
+            oracle_matrix = sparse_tensor_to_pandas_df(self.oracle_tensor)
+            map_k = self.model.evaluate(
+                train_df=bootstrapped_df,
+                test_df=oracle_matrix,
+                k=self.top_k_for_evaluation,
+            )
+            coverage = catalog_coverage(rec, candidates=self.items)
+
+            coverages.append(coverage)
+            maps.append(map_k)
+            kl_divs.append(iteration_avg_kl_div)
+            maces.append(iteration_mace)
 
             if round_idx % L == 0:
                 if not self.compare_to_h0:
                     user_history_tensor = build_user_genre_history_distribution(
-                        boostrapped_df,
+                        bootstrapped_df,
                         self.p_g_i,
                         n_users=self.n_users,
                         n_items=self.n_items,
-                        weight_col=self.calibration_type,
+                        weight_col=(
+                            "constant"
+                            if self.calibration_type is None
+                            else self.calibration_type
+                        ),
                     )
                 if not self.use_random_rec:
                     print("retraining model...")
                     self.model = copy.deepcopy(initial_model)
                     self.model.to(initial_model.device)
-                    _ = self.model.fit(boostrapped_df, debug=False)
+                    print(f"Oracle tensor: {self.oracle_tensor}")
+                    print(f"bootstrapped_df (train_df): {bootstrapped_df}")
+                    _ = self.model.fit(bootstrapped_df, debug=False)
 
-        return boostrapped_df, maces, kl_divs
+        return bootstrapped_df, maces, kl_divs, maps, coverages
