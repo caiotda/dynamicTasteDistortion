@@ -1,6 +1,7 @@
 import ast
 import pickle
 import os
+from bprMf.bprMf.evaluation import average_precision_at_k, compute_map_at_k
 import torch
 
 import numpy as np
@@ -54,6 +55,36 @@ class MostPopularRecommender(BaseModel):
     def forward(self, users, items):
         # score depends only on item popularity
         return self.item_2_popularity[items]
+
+    def evaluate(self, train_df, test_df, k=20):
+        self.eval()
+
+        train_pos = train_df.groupby("user")["item"].apply(set)
+        test_pos = test_df.groupby("user")["item"].apply(set)
+        # Make sure to use users present in both, specially important in CVTT
+        # scenario
+        eval_users = sorted(set(test_pos.index) & set(train_pos.index))
+
+        all_items = torch.arange(self.n_items, device=self.device)
+
+        with torch.no_grad():
+            # Because most popular is not a personalized recommendation, we don´t need difference predictions
+            # per user
+            item_scores = self.forward(None, all_items)
+            # we expand it to 2d in order to to top_k rank.
+            score_matrix = item_scores.unsqueeze(0).expand(len(eval_users), -1).clone()
+
+            # remove predictions for items exclusively in train dataset.
+            for i, user_id in enumerate(eval_users):
+                train_items = torch.tensor(list(train_pos[user_id]), device=self.device)
+                score_matrix[i, train_items] = -torch.inf
+
+            top_k = torch.topk(score_matrix, k=k, dim=1).indices.cpu().numpy()
+
+        map_k = compute_map_at_k(top_k, eval_users, test_pos, k)
+
+        self.train()
+        return map_k
 
 
 bpr_param_grid = {

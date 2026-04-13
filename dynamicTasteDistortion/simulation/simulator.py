@@ -1,4 +1,5 @@
-from dynamicTasteDistortion.dynamicTasteDistortion.scripts.metrics_utils import (
+from bprMf.bprMf.evaluation import compute_map_at_k
+from dynamicTasteDistortion.scripts.metrics_utils import (
     catalog_coverage,
 )
 import torch
@@ -445,11 +446,19 @@ class Simulator:
             # to avoid an ever growing set of clicks to train the model on.
             mask = self._mask_previously_seen_items(bootstrapped_df)
             oracle_matrix = sparse_tensor_to_pandas_df(self.oracle_tensor)
-            map_k = self.model.evaluate(
-                train_df=bootstrapped_df,
-                test_df=oracle_matrix,
-                k=self.top_k_for_evaluation,
-            )
+            if self.use_random_rec:
+                train_pos = bootstrapped_df.groupby("user")["item"].apply(set)
+                test_pos = oracle_matrix.groupby("user")["item"].apply(set)
+                eval_users = sorted(set(test_pos.index) & set(train_pos.index))
+                top_k = rec[:, :self.top_k_for_evaluation]
+
+                map_k = compute_map_at_k(top_k, eval_users, test_pos, self.top_k_for_evaluation)
+            else:
+                map_k = self.model.evaluate(
+                    train_df=bootstrapped_df,
+                    test_df=oracle_matrix,
+                    k=self.top_k_for_evaluation,
+                )
             coverage = catalog_coverage(rec, candidates=self.items)
 
             coverages.append(coverage)
@@ -474,8 +483,6 @@ class Simulator:
                     print("retraining model...")
                     self.model = copy.deepcopy(initial_model)
                     self.model.to(initial_model.device)
-                    print(f"Oracle tensor: {self.oracle_tensor}")
-                    print(f"bootstrapped_df (train_df): {bootstrapped_df}")
                     _ = self.model.fit(bootstrapped_df, debug=False)
 
         return bootstrapped_df, maces, kl_divs, maps, coverages
