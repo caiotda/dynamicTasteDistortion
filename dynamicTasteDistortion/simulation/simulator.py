@@ -398,7 +398,9 @@ class Simulator:
             self.p_g_i,
             n_users=self.n_users,
             n_items=self.n_items,
-            weight_col=self.calibration_type,
+            weight_col=(
+                "constant" if self.calibration_type is None else self.calibration_type
+            ),
         )
         mask = None
         bootstrapped_df = pd.DataFrame({}, columns=bootstrapped_df.columns)
@@ -446,7 +448,11 @@ class Simulator:
                         self.p_g_i,
                         n_users=self.n_users,
                         n_items=self.n_items,
-                        weight_col=self.calibration_type,
+                        weight_col=(
+                            "constant"
+                            if self.calibration_type is None
+                            else self.calibration_type
+                        ),
                     )
                 if not self.use_random_rec:
                     print("retraining model...")
