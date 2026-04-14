@@ -1,7 +1,7 @@
 import ast
 import pickle
 import os
-from bprMf.bprMf.evaluation import average_precision_at_k, compute_map_at_k
+from bprMf.evaluation import compute_map_at_k
 import torch
 
 import numpy as np

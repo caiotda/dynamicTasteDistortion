@@ -1,4 +1,4 @@
-from bprMf.bprMf.evaluation import compute_map_at_k
+from bprMf.evaluation import compute_map_at_k
 from dynamicTasteDistortion.scripts.metrics_utils import (
     catalog_coverage,
 )
