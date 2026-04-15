@@ -49,17 +49,29 @@ def read_metrics(cfg_file, should_remove_outliers=False):
         / f"users={num_users}"
         / f"eval_every={num_rounds_per_eval}"
     )
-
+    # Read maces pickle file
     file_name = base_artifacts_path / "maces.pkl"
     maces = pd.read_pickle(file_name)
-
-    # Read maces pickle file
+    
+    # Read kl divs pickle file
     file_name = base_artifacts_path / "kl_divs.pkl"
     kl_divs = pd.read_pickle(file_name)
+
+    # Read MAP pickle file
+    # TODO: salvei esse arquivo com o nome errado. Vou ter que arrumar
+    # na mão, rerodar, e depois ajustar aqui e no simulator_client
+    file_name = base_artifacts_path / "mace_at_k.pkl"
+    map_k = pd.read_pickle(file_name)
+
+    # Read catalog_coverage pickle file
+    file_name = base_artifacts_path / "catalog_coverage.pkl"
+    catalog_coverage = pd.read_pickle(file_name)
     if should_remove_outliers:
         maces = remove_outliers(maces)
         kl_divs = remove_outliers(kl_divs)
-    return maces, kl_divs
+        map_k = remove_outliers(map_k)
+        catalog_coverage = remove_outliers(catalog_coverage)
+    return maces, kl_divs, map_k, catalog_coverage
 
 
 def load_bootstrapped_clicks(data_type, size, num_users):
