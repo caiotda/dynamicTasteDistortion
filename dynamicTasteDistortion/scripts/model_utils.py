@@ -33,6 +33,7 @@ class MostPopularRecommender(BaseModel):
     def __init__(self, df):
         super().__init__()
         n_items = df.item.nunique()
+        self.n_items = df.item.max() + 1
 
         pop_df = df.groupby(ITEM_COL).agg(
             popularity=(USER_COL, lambda group: len(group) / n_items)
