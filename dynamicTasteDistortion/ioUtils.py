@@ -66,12 +66,17 @@ def read_metrics(cfg_file, should_remove_outliers=False):
     # Read catalog_coverage pickle file
     file_name = base_artifacts_path / "catalog_coverage.pkl"
     catalog_coverage = pd.read_pickle(file_name)
+
+    # Read MRR
+    file_name = base_artifacts_path / "mrrs.pkl"
+    mrr = pd.read_pickle(file_name)
     if should_remove_outliers:
         maces = remove_outliers(maces)
         kl_divs = remove_outliers(kl_divs)
         map_k = remove_outliers(map_k)
         catalog_coverage = remove_outliers(catalog_coverage)
-    return maces, kl_divs, map_k, catalog_coverage
+        mrr = remove_outliers(mrr)
+    return maces, kl_divs, map_k, catalog_coverage, mrr
 
 
 def load_bootstrapped_clicks(data_type, size, num_users):

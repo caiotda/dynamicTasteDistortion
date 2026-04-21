@@ -55,13 +55,15 @@ def plot_metric_comparison(
         "kl": 1,
         "map": 2,
         "coverage": 3,
+        "mrr": 4
     }
 
     metric_name_to_nice_name = {
         "mace": "Mean Average Calibration Error",
         "kl": "Average KL Divergence",
         "map": "Mean Average Precision",
-        "coverage": "Catalog Coverage"
+        "coverage": "Catalog Coverage",
+        "mrr": "Mean Reciprocal Rank"
     }
 
     metric_index = metric_map[metric_name.lower()]
