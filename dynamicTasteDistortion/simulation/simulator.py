@@ -342,7 +342,7 @@ class Simulator:
 
         if self.use_random_rec:
             n_users = self.users.max() + 1
-            rec, score = random_rec(self.items, n_users, k, mask=mask)
+            rec, score = random_rec(self.items, n_users, k, mask=mask, dev=self.device)
         else:
             rec, score = self.model.recommend(
                 users=self.users, k=k, candidates=self.items, mask=mask
@@ -448,10 +448,11 @@ class Simulator:
             # What was interacted with (round_df) gets added to the running click df.
             round_interactions = concat_dfs(round_interactions, round_df)
 
+            # Every time an item was interacted during the last L rounds, we remove it from the next recommendation.
             mask = self._mask_previously_seen_items(round_interactions)
 
             map_k = compute_map_at_k(
-                train_df=round_interactions,
+                train_df=bootstrapped_df,
                 test_df=round_df,
                 rec=rec,
                 users=self.users,
@@ -467,7 +468,7 @@ class Simulator:
             mrrs.append(mrr)
 
             if round_idx % L == 0:
-                # We reset the masked items every retrain
+                # Clicks that happened during the last L rounds are added to the rolling training dataset
                 bootstrapped_df = concat_dfs(bootstrapped_df, round_interactions)
                 round_interactions = pd.DataFrame({}, columns=bootstrapped_df.columns)
                 if not self.compare_to_h0:

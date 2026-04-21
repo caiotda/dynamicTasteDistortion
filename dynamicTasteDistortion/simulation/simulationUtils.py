@@ -335,16 +335,14 @@ def calculate_preference_matrix(
     return preference_matrix_updated
 
 
-def random_rec(candidates, n_users, k, mask=None):
+def random_rec(candidates, n_users, k, mask=None, dev=device):
     if mask is not None:
         weights = (mask == 1).float()
         # Previously seen items are assigned a probabilty of 0 to be recommended,
         # while unseen items have a probability of 1.
-        ids = torch.multinomial(weights, num_samples=k, replacement=False)
+        ids = torch.multinomial(weights, num_samples=k, replacement=False).to(dev)
     else:
-        ids = torch.randint(
-            size=(n_users, k), low=0, high=len(candidates), device=device
-        )
+        ids = torch.randint(size=(n_users, k), low=0, high=len(candidates)).to(dev)
 
-    scores = torch.rand(size=(n_users, k), device=device)
+    scores = torch.rand(size=(n_users, k)).to(dev)
     return ids, scores
