@@ -1,6 +1,8 @@
 import unicodedata
 import re
 
+import pandas as pd
+
 from dynamicTasteDistortion.simulationConstants import (
     USER_COL,
     ITEM_COL,
@@ -14,6 +16,14 @@ synonyms = {
     "childrens": "child",
     "thrill": "thriller",
 }
+
+def concat_dfs(df1, df2):
+    # Wrapper to handle with annoying FutureWarning when dealing
+    # with a empty dataframe
+    dfs = [df1, df2]
+    to_concat = [df for df in dfs if not df.empty]
+    final_df = pd.concat(to_concat, ignore_index=True)
+    return final_df
 
 
 def preprocess_genres(df, genre_col="genres", SEP="|"):

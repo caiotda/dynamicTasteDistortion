@@ -1,4 +1,4 @@
-from bprMf.evaluation import compute_map_at_k
+from bprMf.evaluation import compute_map_at_k, calculate_mmr
 from dynamicTasteDistortion.scripts.metrics_utils import (
     catalog_coverage,
 )
@@ -31,6 +31,9 @@ from dynamicTasteDistortion.simulation.simulationUtils import (
     update_oracle_from_hits,
     calculate_preference_matrix,
 )
+
+from dynamicTasteDistortion.scripts.data_utils import concat_dfs
+
 from dynamicTasteDistortion.simulationConstants import (
     USER_COL,
     ITEM_COL,
@@ -339,7 +342,7 @@ class Simulator:
 
         if self.use_random_rec:
             n_users = self.users.max() + 1
-            rec, score = random_rec(self.items, n_users, k)
+            rec, score = random_rec(self.items, n_users, k, mask=mask, dev=self.device)
         else:
             rec, score = self.model.recommend(
                 users=self.users, k=k, candidates=self.items, mask=mask
@@ -393,6 +396,7 @@ class Simulator:
         maces = []
         kl_divs = []
         maps = []
+        mrrs = []
         coverages = []
         # This ensures that we always have a fresh model at each retrain, without knowing
         # its parameters
@@ -411,6 +415,7 @@ class Simulator:
         )
         mask = None
         bootstrapped_df = pd.DataFrame({}, columns=bootstrapped_df.columns)
+        round_interactions = pd.DataFrame({}, columns=bootstrapped_df.columns)
         for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
             # We avoid recommending repeated items in the same interaction.
             rec, score = self._recommend(users_history=H_0, k=k, mask=mask)
@@ -419,6 +424,7 @@ class Simulator:
                 rec=rec,
                 score=score,
             )
+            round_df["round"] = int(round_idx)
 
             # We calculate the taste distortion between what's being recommended and the users initial taste
             rec_genre_distribution_tensor = build_user_genre_history_distribution(
@@ -440,33 +446,31 @@ class Simulator:
             )
 
             # What was interacted with (round_df) gets added to the running click df.
-            bootstrapped_df = pd.concat([bootstrapped_df, round_df], ignore_index=True)
+            round_interactions = concat_dfs(round_interactions, round_df)
 
-            # At every L rounds, we retrain the model and reset the accumulated clicks, which is done
-            # to avoid an ever growing set of clicks to train the model on.
-            mask = self._mask_previously_seen_items(bootstrapped_df)
-            oracle_matrix = sparse_tensor_to_pandas_df(self.oracle_tensor)
-            if self.use_random_rec:
-                train_pos = bootstrapped_df.groupby("user")["item"].apply(set)
-                test_pos = oracle_matrix.groupby("user")["item"].apply(set)
-                eval_users = sorted(set(test_pos.index) & set(train_pos.index))
-                top_k = rec[:, :self.top_k_for_evaluation]
+            # Every time an item was interacted during the last L rounds, we remove it from the next recommendation.
+            mask = self._mask_previously_seen_items(round_interactions)
 
-                map_k = compute_map_at_k(top_k, eval_users, test_pos, self.top_k_for_evaluation)
-            else:
-                map_k = self.model.evaluate(
-                    train_df=bootstrapped_df,
-                    test_df=oracle_matrix,
-                    k=self.top_k_for_evaluation,
-                )
+            map_k = compute_map_at_k(
+                train_df=bootstrapped_df,
+                test_df=round_df,
+                rec=rec,
+                users=self.users,
+                top_k_for_evaluation=self.top_k_for_evaluation,
+            )
+            mrr = calculate_mmr(round_df)
             coverage = catalog_coverage(rec, candidates=self.items)
 
             coverages.append(coverage)
             maps.append(map_k)
             kl_divs.append(iteration_avg_kl_div)
             maces.append(iteration_mace)
+            mrrs.append(mrr)
 
             if round_idx % L == 0:
+                # Clicks that happened during the last L rounds are added to the rolling training dataset
+                bootstrapped_df = concat_dfs(bootstrapped_df, round_interactions)
+                round_interactions = pd.DataFrame({}, columns=bootstrapped_df.columns)
                 if not self.compare_to_h0:
                     user_history_tensor = build_user_genre_history_distribution(
                         bootstrapped_df,
@@ -485,4 +489,4 @@ class Simulator:
                     self.model.to(initial_model.device)
                     _ = self.model.fit(bootstrapped_df, debug=False)
 
-        return bootstrapped_df, maces, kl_divs, maps, coverages
+        return bootstrapped_df, maces, kl_divs, maps, coverages, mrrs
