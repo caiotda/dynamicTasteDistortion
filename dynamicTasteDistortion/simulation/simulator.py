@@ -1,6 +1,7 @@
 from bprMf.evaluation import compute_map_at_k, calculate_mmr
 from dynamicTasteDistortion.scripts.metrics_utils import (
     catalog_coverage,
+    calculate_gini_index,
 )
 import torch
 import os
@@ -398,6 +399,7 @@ class Simulator:
         maps = []
         mrrs = []
         coverages = []
+        ginis = []
         # This ensures that we always have a fresh model at each retrain, without knowing
         # its parameters
         initial_model = copy.deepcopy(self.model)
@@ -416,6 +418,8 @@ class Simulator:
         mask = None
         bootstrapped_df = pd.DataFrame({}, columns=bootstrapped_df.columns)
         round_interactions = pd.DataFrame({}, columns=bootstrapped_df.columns)
+
+        catalog_items = self.items.tolist()
         for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
             # We avoid recommending repeated items in the same interaction.
             rec, score = self._recommend(users_history=H_0, k=k, mask=mask)
@@ -459,13 +463,15 @@ class Simulator:
                 top_k_for_evaluation=self.top_k_for_evaluation,
             )
             mrr = calculate_mmr(round_df)
-            coverage = catalog_coverage(rec, candidates=self.items)
+            coverage = catalog_coverage(rec, catalog=self.items)
+            gini = calculate_gini_index(rec, catalog=catalog_items)
 
             coverages.append(coverage)
             maps.append(map_k)
             kl_divs.append(iteration_avg_kl_div)
             maces.append(iteration_mace)
             mrrs.append(mrr)
+            ginis.append(gini)
 
             if round_idx % L == 0:
                 # Clicks that happened during the last L rounds are added to the rolling training dataset
@@ -489,4 +495,4 @@ class Simulator:
                     self.model.to(initial_model.device)
                     _ = self.model.fit(bootstrapped_df, debug=False)
 
-        return bootstrapped_df, maces, kl_divs, maps, coverages, mrrs
+        return bootstrapped_df, maces, kl_divs, maps, coverages, mrrs, ginis

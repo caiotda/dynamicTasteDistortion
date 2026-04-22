@@ -166,7 +166,7 @@ def main():
         preference_update_rate=preference_update_rate,
         compare_to_h_0=compare_to_h_0,
     )
-    simulated_df, maces, kl_divs, maps, coverages, mrrs = sim.simulate(
+    simulated_df, maces, kl_divs, maps, coverages, mrrs, ginis = sim.simulate(
         L=num_rounds_per_eval, rounds=rounds, k=20
     )
 
@@ -178,3 +178,4 @@ def main():
     save_pickle_artifact(kl_divs, f"{base_artifacts_path}/kl_divs.pkl")
     save_pickle_artifact(maps, f"{base_artifacts_path}/mace_at_k.pkl")
     save_pickle_artifact(coverages, f"{base_artifacts_path}/catalog_coverage.pkl")
+    save_pickle_artifact(ginis, f"{base_artifacts_path}/gini.pkl")
