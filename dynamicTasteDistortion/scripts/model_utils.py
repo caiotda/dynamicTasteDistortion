@@ -182,8 +182,8 @@ class ModelChooser:
         self.param_grid_nmf = {
             "n_factors": [15, 30, 100],
             "n_epochs": [50, 100],
-            "reg_pu":  [0.02, 0.05, 0.1],
-            "reg_qi":  [0.02, 0.05, 0.1],
+            "reg_pu": [0.02, 0.05, 0.1],
+            "reg_qi": [0.02, 0.05, 0.1],
         }
 
         self.model_name_to_params = {
@@ -195,16 +195,18 @@ class ModelChooser:
         self.model = self.models[self.name]
         self.params = self.model_name_to_params[self.name]
 
-    def yield_models(self, n_samples, seed = 42):
+    def yield_models(self, n_samples, seed=42):
         model = self.model
         params = self.params
         rng = np.random.default_rng(seed)
-        
+
         samples = []
         for _ in trange(n_samples, desc="Sampling hyperparameters"):
-            sampled_params = {key: rng.choice(values).item() for key, values in params.items()}
+            sampled_params = {
+                key: rng.choice(values).item() for key, values in params.items()
+            }
             samples.append((model(**sampled_params), sampled_params))
-        
+
         return samples
 
 
@@ -240,7 +242,7 @@ def choose_best_model(df):
         model_config = ModelChooser(model_name)
         models = model_config.yield_models(n_samples=40)
 
-        best_score = float('-inf')
+        best_score = float("-inf")
         best_model = None
         best_params = None
 
@@ -262,7 +264,7 @@ def choose_best_model(df):
         family_winners[model_name] = (best_model, best_params, best_score)
 
     # Now we perform the final model selection on the test set
-    global_best_score = float('-inf')
+    global_best_score = float("-inf")
     global_best_model = None
 
     for model_name, (best_model, best_params, _) in family_winners.items():
@@ -279,13 +281,15 @@ def choose_best_model(df):
 
     rows = []
     for (model_name, params), scores in f1_results.items():
-        rows.append({
-            "model_name": model_name,
-            "params": params,
-            "validation_f1": scores["val_f1"],
-            "test_f1": scores["test_f1"],
-            "is_winning_variant": scores["test_f1"] is not None,
-        })
+        rows.append(
+            {
+                "model_name": model_name,
+                "params": params,
+                "validation_f1": scores["val_f1"],
+                "test_f1": scores["test_f1"],
+                "is_winning_variant": scores["test_f1"] is not None,
+            }
+        )
 
     f1_df = pd.DataFrame(rows)
     return global_best_model, f1_df
