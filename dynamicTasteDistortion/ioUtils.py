@@ -1,3 +1,4 @@
+import ast
 from dynamicTasteDistortion.scripts.metrics_utils import remove_outliers
 from dynamicTasteDistortion.scripts.model_utils import (
     choose_best_model,
@@ -163,9 +164,12 @@ def get_or_create_oracle_model_artifacts(df, data_type, size):
         oracle_model = model_class(**model_params)
     else:
         print("Starting model selection...")
-        oracle_model = choose_best_model(df, f"{data_type}_{size}")
-        # TODO: falta persistir os parametros.
+        oracle_model, f1_results = choose_best_model(df)
 
+        destination_dir = f"{RESULTS_PATH}/{data_type}_{size}"
+        os.makedirs(destination_dir, exist_ok=True)
+        f1_results.to_pickle(f"{destination_dir}/oracle_model_f1_results.pkl")
+        print(f"Saving oracle model f1 results to {destination_dir}/oracle_model_f1_results.pkl")
     return oracle_model
 
 
