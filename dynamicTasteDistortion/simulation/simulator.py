@@ -103,6 +103,10 @@ class Simulator:
         )
         self.oracle_tensor = pandas_df_to_sparse_tensor(filtered_oracle_matrix)
 
+        self.interaction_recency_matrix = build_interaction_timestamp_matrix(
+            self.n_users, self.n_items, self.oracle_tensor, initial_date, self.device
+        )
+
         self.use_random_rec = True if model is None else False
         self.model = model
 
@@ -137,9 +141,7 @@ class Simulator:
 
         # N_users x N_items matrix that tracks the most recent interaction between each
         # user and item in the simulation.
-        self.interaction_recency_matrix = build_interaction_timestamp_matrix(
-            self.n_users, self.n_items, self.oracle_tensor, initial_date, self.device
-        )
+
 
         # Builds a multi hot encoding tensor of shape n_items x n_genres.
         self.genre_tensor = convert_item_genre_map_to_tensor(self.item2genreMap)

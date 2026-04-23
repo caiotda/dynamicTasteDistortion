@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import f1_score
 from sklearn.model_selection import KFold
-from surprise import NMF, Reader, SVDpp, Dataset as SurpriseDataset
+from surprise import SVD, NMF, Reader, SVDpp, Dataset as SurpriseDataset
 from itertools import product
 
 from tqdm import tqdm, trange
@@ -168,109 +168,128 @@ class ModelChooser:
         self.name = name
         self.models = {
             "SVD++": SVDpp,
+            "SVD": SVD,
             "NMF": NMF,
         }
 
         self.param_grid_svd = {
-            "n_epochs": [10, 20],
-            "lr_all": [0.002, 0.005],
-            "reg_all": [0.02, 0.1],
+            "n_factors": [15, 30, 100],
+            "n_epochs": [10, 20, 30],
+            "lr_all": [0.01, 0.002, 0.005],
+            "reg_all": [0.02, 0.05, 0.1],
         }
 
         self.param_grid_nmf = {
-            "n_factors": [15, 30],
+            "n_factors": [15, 30, 100],
             "n_epochs": [50, 100],
-            "reg_pu": [0.06, 0.1],
-            "reg_qi": [0.06, 0.1],
+            "reg_pu": [0.02, 0.05, 0.1],
+            "reg_qi": [0.02, 0.05, 0.1],
         }
 
         self.model_name_to_params = {
             "SVD++": self.param_grid_svd,
             "NMF": self.param_grid_nmf,
+            "SVD": self.param_grid_svd,
         }
 
         self.model = self.models[self.name]
         self.params = self.model_name_to_params[self.name]
 
-    def yield_models(self):
+    def yield_models(self, n_samples, seed=42):
         model = self.model
         params = self.params
-        param_names = list(params.keys())
-        combinations = list(product(*params.values()))
-        dicts = [dict(zip(param_names, values)) for values in combinations]
-        return [(model(**param), param) for param in dicts]
+        rng = np.random.default_rng(seed)
+
+        samples = []
+        for _ in trange(n_samples, desc="Sampling hyperparameters"):
+            sampled_params = {
+                key: rng.choice(values).item() for key, values in params.items()
+            }
+            samples.append((model(**sampled_params), sampled_params))
+
+        return samples
 
 
-def choose_best_model(df, data_type):
-    kf = KFold(n_splits=5, shuffle=True, random_state=42)
+def choose_best_model(df):
     f1_results = {}
 
-    model_names = ["SVD++", "NMF"]
+    model_names = ["SVD", "SVD++", "NMF"]
     reader = Reader(rating_scale=(1, 5))
 
-    usuarios = df["user"].unique()
+    train_df, val_df, test_df = temporal_train_val_test_split(
+        df=df,
+        user_col=USER_COL,
+        val_pct=0.15,
+        test_pct=0.15,
+    )
+
+    train_surprise = SurpriseDataset.load_from_df(
+        train_df[["user", "item", "rating"]], reader
+    )
+    trainset_surprise = train_surprise.build_full_trainset()
+
+    validation_set_surprise = list(
+        val_df[["user", "item", "rating"]].itertuples(index=False, name=None)
+    )
+    test_set_surprise = list(
+        test_df[["user", "item", "rating"]].itertuples(index=False, name=None)
+    )
+
+    # Maps the best hyperparamer variant
+    family_winners = {}  # model_name -> (best_model, best_params, best_val_f1)
 
     for model_name in model_names:
         model_config = ModelChooser(model_name)
-        models = model_config.yield_models()
+        models = model_config.yield_models(n_samples=40)
 
-        for model, params in tqdm(
-            models, desc=f"Starting optimization for model {model_name}..."
-        ):
-            f1_scores = []
+        best_score = float("-inf")
+        best_model = None
+        best_params = None
 
-            for train_users_idx, test_users_idx in kf.split(usuarios):
-                train_users = set(usuarios[train_users_idx])
-                test_users = set(usuarios[test_users_idx])
+        for model, params in tqdm(models, desc=f"Optimizing {model_name}..."):
+            model.fit(trainset_surprise)
+            predictions = model.test(validation_set_surprise)
 
-                trainset = df[df.user.isin(train_users)]
-                testset = df[df.user.isin(test_users)]
+            y_pred = [1 if pred.est >= 4 else 0 for pred in predictions]
+            y_true = [1 if pred.r_ui >= 4 else 0 for pred in predictions]
+            val_f1 = f1_score(y_true, y_pred)
 
-                train_surprise = SurpriseDataset.load_from_df(
-                    trainset[["user", "item", "rating"]], reader
-                )
-                trainset_surprise = train_surprise.build_full_trainset()
+            if val_f1 > best_score:
+                best_score = val_f1
+                best_model = model
+                best_params = str(params)
 
-                testset_surprise = list(
-                    testset[["user", "item", "rating"]].itertuples(
-                        index=False, name=None
-                    )
-                )
+            f1_results[(model_name, str(params))] = {"val_f1": val_f1, "test_f1": None}
 
-                model.fit(trainset_surprise)
-                predictions = model.test(testset_surprise)
+        family_winners[model_name] = (best_model, best_params, best_score)
 
-                y_pred = [1 if pred.est >= 4 else 0 for pred in predictions]
-                y_true = [1 if pred.r_ui >= 4 else 0 for pred in predictions]
+    # Now we perform the final model selection on the test set
+    global_best_score = float("-inf")
+    global_best_model = None
 
-                f1_scores.append(f1_score(y_true, y_pred))
+    for model_name, (best_model, best_params, _) in family_winners.items():
+        test_predictions = best_model.test(test_set_surprise)
+        test_y_pred = [1 if pred.est >= 4 else 0 for pred in test_predictions]
+        test_y_true = [1 if pred.r_ui >= 4 else 0 for pred in test_predictions]
+        test_f1 = f1_score(test_y_true, test_y_pred)
 
-            f1_results[(model_config, str(params))] = np.mean(f1_scores)
+        f1_results[(model_name, best_params)]["test_f1"] = test_f1
 
-    f1_df = pd.DataFrame(
-        [
-            {"model": str(model_config.name), "params": params, "f1_score": score}
-            for (model_config, params), score in f1_results.items()
-        ]
-    )
-    destination_dir = f"{RESULTS_PATH}/{data_type}"
-    model_artifacts_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}"
-    # Mover isso pra main?
-    if not os.path.exists(destination_dir):
-        os.makedirs(destination_dir)
-    if not os.path.exists(model_artifacts_path):
-        os.makedirs(model_artifacts_path)
+        if test_f1 > global_best_score:
+            global_best_score = test_f1
+            global_best_model = best_model
 
-    f1_df.to_pickle(f"{destination_dir}/oracle_model_f1_results.pkl")
+    rows = []
+    for (model_name, params), scores in f1_results.items():
+        rows.append(
+            {
+                "model_name": model_name,
+                "params": params,
+                "validation_f1": scores["val_f1"],
+                "test_f1": scores["test_f1"],
+                "is_winning_variant": scores["test_f1"] is not None,
+            }
+        )
 
-    best_results = f1_df.sort_values(by="f1_score", ascending=False).iloc[0]
-    best_model = best_results.model
-    best_params = ast.literal_eval(best_results.params)
-
-    model_class = MODEL_NAME_TO_CLASS_NAME[best_model]
-    oracle_model = model_class(**best_params)
-    artifact = {"params": best_params, "model_class": model_class}
-    with open(f"{MODEL_ARTIFACTS_PATH}/{data_type}/oracle_model_params.pkl", "wb") as f:
-        pickle.dump(artifact, f)
-
-    return oracle_model
+    f1_df = pd.DataFrame(rows)
+    return global_best_model, f1_df
