@@ -149,23 +149,24 @@ def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
 
 
 def get_or_create_oracle_model_artifacts(df, data_type, size):
-    oracle_model_params_path = (
-        f"{MODEL_ARTIFACTS_PATH}/{data_type}_{size}/oracle_model_params.pkl"
+    oracle_model_path = (
+        f"{MODEL_ARTIFACTS_PATH}/{data_type}_{size}/oracle_model.pkl"
     )
 
-    if os.path.exists(oracle_model_params_path):
+    if os.path.exists(oracle_model_path):
         print(
             f"Oracle model trained on {data_type}_{size} found!Skipping model selection"
         )
-        oracle_model_artifact = load_pickle_artifact(oracle_model_params_path)
+        oracle_model_artifact = load_pickle_artifact(oracle_model_path)
 
         model_class = oracle_model_artifact["model_class"]
         model_params = oracle_model_artifact["params"]
         oracle_model = model_class(**model_params)
     else:
+        os.makedirs(f"{MODEL_ARTIFACTS_PATH}/{data_type}_{size}/", exist_ok=True)
         print("Starting model selection...")
         oracle_model, f1_results = choose_best_model(df)
-
+        save_pickle_artifact(oracle_model, oracle_model_path)
         destination_dir = f"{RESULTS_PATH}/{data_type}_{size}"
         os.makedirs(destination_dir, exist_ok=True)
         f1_results.to_pickle(f"{destination_dir}/oracle_model_f1_results.pkl")
