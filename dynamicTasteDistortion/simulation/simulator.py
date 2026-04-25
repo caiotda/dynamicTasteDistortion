@@ -18,6 +18,7 @@ from calibratedRecs.calibrationUtils import (
     build_item_genre_distribution_tensor,
     preprocess_dataframe_for_calibration,
     build_user_genre_history_distribution,
+    preprocess_dataframe_for_calibration,
 )
 
 from calibratedRecs.reranking_utils import rerank_by_calibration
@@ -277,7 +278,6 @@ class Simulator:
         )
 
         interaction_df = interaction_df[interaction_df["relevant"] == 1.0]
-        interaction_df["constant"] = 1.0  # For calibration purposes
 
         n_users = rec.shape[0]
         k = rec.shape[1]
@@ -299,7 +299,7 @@ class Simulator:
                 clicked_items=clicked_items,
             )
 
-        return interaction_df, rec_df
+        return preprocess_dataframe_for_calibration(interaction_df), rec_df
 
     def bootstrap_clicks(self, k=20, num_interactions_bootstrapped=500_000):
         """
