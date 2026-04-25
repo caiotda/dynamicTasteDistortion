@@ -108,13 +108,14 @@ class HyperParameterTuner:
         self.n_users = df.user.max() + 1
         self.n_items = df.item.max() + 1
 
-    def tune(self, val_pct=0.1, test_pct=0.1, n_samples=20, k=20):
+    def tune(self, truth_set, val_pct=0.2, test_pct=0.2, n_samples=20, k=20):
         train_df, val_df, test_df = temporal_train_val_test_split(
             df=self.df,
             user_col=USER_COL,
             val_pct=val_pct,
             test_pct=test_pct,
         )
+        pos_truth_set = truth_set[truth_set["rating"] == 1]
         rng = np.random.default_rng(self.seed)
         results = []
         for i in trange(n_samples, desc="Processing tuning rounds"):
@@ -134,7 +135,9 @@ class HyperParameterTuner:
                 **params,
             )
             model.fit(train_df)
-            map_score = model.evaluate(train_df=train_df, test_df=val_df, k=k)
+            map_score = model.evaluate(
+                train_df=train_df, oot_df=val_df, oracle_df_pos=pos_truth_set, k=k
+            )
 
             print(f"  MAP@{k}: {map_score:.4f}")
             results.append({**params, "map": map_score})
@@ -156,7 +159,9 @@ class HyperParameterTuner:
         )
         print(f"Training on train+val set...")
         final_model.fit(train_val_df)
-        test_map = final_model.evaluate(train_df=train_val_df, test_df=test_df, k=k)
+        test_map = final_model.evaluate(
+            train_df=train_val_df, oot_df=test_df, oracle_df_pos=pos_truth_set, k=k
+        )
         print(f"Final test MAP@{k}: {test_map:.4f}")
 
         return final_model, results_df, best_params
