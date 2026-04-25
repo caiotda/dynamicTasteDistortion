@@ -329,8 +329,8 @@ class Simulator:
             total=num_interactions_bootstrapped, desc="Bootstrapping clicks"
         ) as pbar:
             while len(bootstrapped_df) < num_interactions_bootstrapped:
-                mask = self._mask_previously_seen_items(bootstrapped_df).to(self.device)
-                rec, score = random_rec(self.items, n_users, k, mask)
+                # mask = self._mask_previously_seen_items(bootstrapped_df).to(self.device)
+                rec, score = random_rec(self.items, n_users, k, mask=None)
                 round_df, _ = self.simulate_user_feedback(
                     rec=rec, score=score, from_bootstrap=True
                 )
