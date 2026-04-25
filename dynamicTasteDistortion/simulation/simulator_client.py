@@ -165,8 +165,8 @@ def main():
         preference_update_rate=preference_update_rate,
         compare_to_h_0=compare_to_h_0,
     )
-    simulated_df, maces, kl_divs, maps, coverages, mrrs, ginis, sims = sim.simulate(
-        L=num_rounds_per_eval, rounds=rounds, k=20
+    simulated_df, maces, kl_divs, maps, coverages, mrrs, ginis, diversities = (
+        sim.simulate(L=num_rounds_per_eval, rounds=rounds, k=20)
     )
 
     print(f"Done! Saving simulated interactions...")
@@ -178,4 +178,4 @@ def main():
     save_pickle_artifact(maps, f"{base_artifacts_path}/mace_at_k.pkl")
     save_pickle_artifact(coverages, f"{base_artifacts_path}/catalog_coverage.pkl")
     save_pickle_artifact(ginis, f"{base_artifacts_path}/gini.pkl")
-    save_pickle_artifact(sims, f"{base_artifacts_path}/sims.pkl")
+    save_pickle_artifact(diversities, f"{base_artifacts_path}/diversities.pkl")

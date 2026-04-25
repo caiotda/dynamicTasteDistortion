@@ -53,7 +53,7 @@ def read_metrics(cfg_file, should_remove_outliers=False):
     # Read maces pickle file
     file_name = base_artifacts_path / "maces.pkl"
     maces = pd.read_pickle(file_name)
-    
+
     # Read kl divs pickle file
     file_name = base_artifacts_path / "kl_divs.pkl"
     kl_divs = pd.read_pickle(file_name)
@@ -76,9 +76,9 @@ def read_metrics(cfg_file, should_remove_outliers=False):
     file_name = base_artifacts_path / "gini.pkl"
     gini = pd.read_pickle(file_name)
 
-    # Read sims
-    file_name = base_artifacts_path / "sims.pkl"
-    sims = pd.read_pickle(file_name)
+    # Read diversities
+    file_name = base_artifacts_path / "diversities.pkl"
+    diversities = pd.read_pickle(file_name)
     if should_remove_outliers:
         maces = remove_outliers(maces)
         kl_divs = remove_outliers(kl_divs)
@@ -86,8 +86,8 @@ def read_metrics(cfg_file, should_remove_outliers=False):
         catalog_coverage = remove_outliers(catalog_coverage)
         mrr = remove_outliers(mrr)
         gini = remove_outliers(gini)
-        sims = remove_outliers(sims)
-    return maces, kl_divs, map_k, catalog_coverage, mrr, gini, sims
+        diversities = remove_outliers(diversities)
+    return maces, kl_divs, map_k, catalog_coverage, mrr, gini, diversities
 
 
 def load_bootstrapped_clicks(data_type, size, num_users):

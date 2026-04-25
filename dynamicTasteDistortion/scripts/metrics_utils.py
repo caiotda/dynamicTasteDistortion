@@ -26,6 +26,10 @@ def remove_outliers(metric):
     return metric_cleaned
 
 
+def diversity(recs, genre_lookup):
+    return 1 - intra_list_similarity(recs, genre_lookup)
+
+
 def intra_list_similarity(recommendations, genre_lookup):
     """
     Calculate the mean Intra-List Similarity (ILS) over all users using Jaccard
