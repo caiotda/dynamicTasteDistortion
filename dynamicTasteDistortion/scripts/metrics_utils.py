@@ -1,3 +1,5 @@
+import torch
+
 from typing import Counter
 from itertools import combinations
 
@@ -26,52 +28,44 @@ def remove_outliers(metric):
     return metric_cleaned
 
 
-def diversity(recs, genre_lookup):
-    return 1 - intra_list_similarity(recs, genre_lookup)
-
-
-def intra_list_similarity(recommendations, genre_lookup):
+def precompute_jaccard(genre_lookup):
     """
-    Calculate the mean Intra-List Similarity (ILS) over all users using Jaccard
-    similarity on one-hot genre vectors.
-
     Args:
-        recommendations: Integer tensor of shape (n_users, k) with recommended item ID
-        genre_lookup: Binary tensor of shape (n_items, n_genres) with one-hot genre vector
-
+        genre_lookup: Binary tensor of shape (n_items, n_genres)
     Returns:
-        Mean ILS as a float in [0, 1].
+        jaccard_matrix: Float tensor of shape (n_items, n_items)
     """
+    g = genre_lookup.float()
+    intersection = g @ g.T  # (n_items, n_items)
+    genre_counts = g.sum(dim=1)  # (n_items,)
+    union = (
+        genre_counts.unsqueeze(1) + genre_counts.unsqueeze(0) - intersection
+    )  # (n_items, n_items)
+    return torch.where(union > 0, intersection / union, torch.zeros_like(intersection))
 
-    def jaccard(a, b):
-        a_bool = a.to(bool)
-        b_bool = b.to(bool)
-        intersection = (a_bool & b_bool).sum()
-        union = (a_bool | b_bool).sum()
-        jaccard = intersection / union
-        return jaccard.item()
 
-    _, k = recommendations.shape
+def diversity(recs, jaccard_lookup):
+    return 1 - intra_list_similarity(recs, jaccard_lookup)
+
+
+def intra_list_similarity(
+    recommendations: torch.Tensor,
+    jaccard_matrix: torch.Tensor,
+) -> float:
+    n_users, k = recommendations.shape
     if k < 2:
         raise ValueError(
             "Need at least 2 items per user to compute pairwise similarity."
         )
 
-    user_ils = []
-    for user_recs in recommendations:
-        # Gets the genre 1-hot encoding of each item in the recommendation
-        genre_encoding = genre_lookup[user_recs]
-        pair_scores = [
-            jaccard(genre_encoding[i], genre_encoding[j])
-            for i, j in combinations(range(k), 2)
-        ]
-        user_ils.append(sum(pair_scores) / len(pair_scores))
+    rows = recommendations.unsqueeze(2).expand(n_users, k, k).contiguous()
+    cols = recommendations.unsqueeze(1).expand(n_users, k, k).contiguous()
+    user_matrices = jaccard_matrix[rows, cols]
 
-    return sum(user_ils) / len(user_ils)
+    mask = torch.ones(k, k, dtype=torch.bool).triu(diagonal=1)  # (k, k)
+    pair_sims = user_matrices[:, mask]  # (n_users, n_pairs)
 
-
-def diversity(recs, genre_lookup):
-    return 1 - intra_list_similarity(recs, genre_lookup)
+    return pair_sims.mean().item()
 
 
 def calculate_gini_index(recommendations, catalog):

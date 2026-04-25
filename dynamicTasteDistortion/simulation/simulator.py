@@ -1,6 +1,7 @@
 from bprMf.evaluation import compute_map_at_k, calculate_mmr
 from dynamicTasteDistortion.scripts.metrics_utils import (
     catalog_coverage,
+    precompute_jaccard,
     calculate_gini_index,
     diversity,
 )
@@ -145,6 +146,7 @@ class Simulator:
 
         # Builds a multi hot encoding tensor of shape n_items x n_genres.
         self.genre_tensor = convert_item_genre_map_to_tensor(self.item2genreMap)
+        self.sim_lookup = precompute_jaccard(self.genre_tensor)
 
         # Stores the probability of each user forgetting each item. This is time dependant
         # And depends on the genre affinity between the user and the item.
@@ -329,7 +331,7 @@ class Simulator:
             total=num_interactions_bootstrapped, desc="Bootstrapping clicks"
         ) as pbar:
             while len(bootstrapped_df) < num_interactions_bootstrapped:
-                # mask = self._mask_previously_seen_items(bootstrapped_df).to(self.device)
+                mask = self._mask_previously_seen_items(bootstrapped_df).to(self.device)
                 rec, score = random_rec(self.items, n_users, k, mask=None)
                 round_df, _ = self.simulate_user_feedback(
                     rec=rec, score=score, from_bootstrap=True
@@ -468,7 +470,7 @@ class Simulator:
             mrr = calculate_mmr(round_df)
             coverage = catalog_coverage(rec, catalog=self.items)
             gini = calculate_gini_index(rec, catalog=catalog_items)
-            ils = diversity(rec, self.genre_tensor)
+            ils = diversity(rec, self.sim_lookup)
 
             coverages.append(coverage)
             maps.append(map_k)
