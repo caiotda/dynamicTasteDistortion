@@ -53,7 +53,7 @@ def read_metrics(cfg_file, should_remove_outliers=False):
     # Read maces pickle file
     file_name = base_artifacts_path / "maces.pkl"
     maces = pd.read_pickle(file_name)
-    
+
     # Read kl divs pickle file
     file_name = base_artifacts_path / "kl_divs.pkl"
     kl_divs = pd.read_pickle(file_name)
@@ -75,6 +75,10 @@ def read_metrics(cfg_file, should_remove_outliers=False):
     # Read gini
     file_name = base_artifacts_path / "gini.pkl"
     gini = pd.read_pickle(file_name)
+
+    # Read diversities
+    file_name = base_artifacts_path / "diversities.pkl"
+    diversities = pd.read_pickle(file_name)
     if should_remove_outliers:
         maces = remove_outliers(maces)
         kl_divs = remove_outliers(kl_divs)
@@ -82,7 +86,8 @@ def read_metrics(cfg_file, should_remove_outliers=False):
         catalog_coverage = remove_outliers(catalog_coverage)
         mrr = remove_outliers(mrr)
         gini = remove_outliers(gini)
-    return maces, kl_divs, map_k, catalog_coverage, mrr, gini
+        diversities = remove_outliers(diversities)
+    return maces, kl_divs, map_k, catalog_coverage, mrr, gini, diversities
 
 
 def load_bootstrapped_clicks(data_type, size, num_users):
@@ -154,9 +159,7 @@ def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
 
 
 def get_or_create_oracle_model_artifacts(df, data_type, size):
-    oracle_model_path = (
-        f"{MODEL_ARTIFACTS_PATH}/{data_type}_{size}/oracle_model.pkl"
-    )
+    oracle_model_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}_{size}/oracle_model.pkl"
 
     if os.path.exists(oracle_model_path):
         print(
@@ -175,7 +178,9 @@ def get_or_create_oracle_model_artifacts(df, data_type, size):
         destination_dir = f"{RESULTS_PATH}/{data_type}_{size}"
         os.makedirs(destination_dir, exist_ok=True)
         f1_results.to_pickle(f"{destination_dir}/oracle_model_f1_results.pkl")
-        print(f"Saving oracle model f1 results to {destination_dir}/oracle_model_f1_results.pkl")
+        print(
+            f"Saving oracle model f1 results to {destination_dir}/oracle_model_f1_results.pkl"
+        )
     return oracle_model
 
 

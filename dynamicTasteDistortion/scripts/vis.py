@@ -57,6 +57,7 @@ def plot_metric_comparison(
         "coverage": 3,
         "mrr": 4,
         "gini": 5,
+        "div": 6,
     }
 
     metric_name_to_nice_name = {
@@ -66,6 +67,7 @@ def plot_metric_comparison(
         "coverage": "Catalog Coverage",
         "mrr": "Mean Reciprocal Rank",
         "gini": "Gini index",
+        "div": "Diversity (ILS)",
     }
 
     metric_index = metric_map[metric_name.lower()]

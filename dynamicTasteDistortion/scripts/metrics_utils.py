@@ -1,4 +1,7 @@
+import torch
+
 from typing import Counter
+from itertools import combinations
 
 import numpy as np
 import pandas as pd
@@ -23,6 +26,46 @@ def remove_outliers(metric):
     metric_cleaned = [x for x in metric if lower_bound <= x <= upper_bound]
 
     return metric_cleaned
+
+
+def precompute_jaccard(genre_lookup):
+    """
+    Args:
+        genre_lookup: Binary tensor of shape (n_items, n_genres)
+    Returns:
+        jaccard_matrix: Float tensor of shape (n_items, n_items)
+    """
+    g = genre_lookup.float()
+    intersection = g @ g.T  # (n_items, n_items)
+    genre_counts = g.sum(dim=1)  # (n_items,)
+    union = (
+        genre_counts.unsqueeze(1) + genre_counts.unsqueeze(0) - intersection
+    )  # (n_items, n_items)
+    return torch.where(union > 0, intersection / union, torch.zeros_like(intersection))
+
+
+def diversity(recs, jaccard_lookup):
+    return 1 - intra_list_similarity(recs, jaccard_lookup)
+
+
+def intra_list_similarity(
+    recommendations: torch.Tensor,
+    jaccard_matrix: torch.Tensor,
+) -> float:
+    n_users, k = recommendations.shape
+    if k < 2:
+        raise ValueError(
+            "Need at least 2 items per user to compute pairwise similarity."
+        )
+
+    rows = recommendations.unsqueeze(2).expand(n_users, k, k).contiguous()
+    cols = recommendations.unsqueeze(1).expand(n_users, k, k).contiguous()
+    user_matrices = jaccard_matrix[rows, cols]
+
+    mask = torch.ones(k, k, dtype=torch.bool).triu(diagonal=1)  # (k, k)
+    pair_sims = user_matrices[:, mask]  # (n_users, n_pairs)
+
+    return pair_sims.mean().item()
 
 
 def calculate_gini_index(recommendations, catalog):
