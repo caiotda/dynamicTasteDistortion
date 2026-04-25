@@ -110,7 +110,7 @@ class Simulator:
         )
 
         self.use_random_rec = True if model is None else False
-        self.model = model
+        self.model = model.to(self.device)
 
         self.users = torch.tensor(users, device=self.device)
 
@@ -396,8 +396,7 @@ class Simulator:
             List of MACE metric values computed every L rounds to evaluate recommendation quality.
         """
 
-        bootstrapped_df = self.click_matrix.copy()
-        H_0 = bootstrapped_df.copy()
+        H_0 = self.click_matrix.copy()
         maces = []
         kl_divs = []
         maps = []
@@ -421,8 +420,14 @@ class Simulator:
             ),
         )
         mask = None
-        bootstrapped_df = pd.DataFrame({}, columns=bootstrapped_df.columns)
-        round_interactions = pd.DataFrame({}, columns=bootstrapped_df.columns)
+        bootstrapped_df = pd.DataFrame({}, columns=H_0.columns)
+        round_interactions = pd.DataFrame({}, columns=H_0.columns)
+
+        # Coldstart model on bootstrap
+        print("Coldstarting model...")
+        if not self.use_random_rec:
+            self.model.fit(H_0)
+        print("Done!")
 
         catalog_items = self.items.tolist()
         for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):

@@ -130,6 +130,14 @@ def main():
             )
             cv_results.to_csv(cv_results_save_path)
 
+            n_users = bootstrapped_df.user.max() + 1
+            n_items = bootstrapped_df.item.max() + 1
+            model = ModelClass(
+                num_users=n_users,
+                num_items=n_items,
+                **best_params,
+            )
+
         elif model_type == "most_popular":
             print(
                 f"Loading {data_type}_{file_size} dataset to fit Most Popular model..."
