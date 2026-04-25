@@ -2,6 +2,7 @@ from bprMf.evaluation import compute_map_at_k, calculate_mmr
 from dynamicTasteDistortion.scripts.metrics_utils import (
     catalog_coverage,
     calculate_gini_index,
+    intra_list_similarity,
 )
 import torch
 import os
@@ -141,7 +142,6 @@ class Simulator:
 
         # N_users x N_items matrix that tracks the most recent interaction between each
         # user and item in the simulation.
-
 
         # Builds a multi hot encoding tensor of shape n_items x n_genres.
         self.genre_tensor = convert_item_genre_map_to_tensor(self.item2genreMap)
@@ -402,6 +402,7 @@ class Simulator:
         mrrs = []
         coverages = []
         ginis = []
+        sims = []
         # This ensures that we always have a fresh model at each retrain, without knowing
         # its parameters
         initial_model = copy.deepcopy(self.model)
@@ -467,6 +468,7 @@ class Simulator:
             mrr = calculate_mmr(round_df)
             coverage = catalog_coverage(rec, catalog=self.items)
             gini = calculate_gini_index(rec, catalog=catalog_items)
+            ils = intra_list_similarity(rec, self.genre_tensor)
 
             coverages.append(coverage)
             maps.append(map_k)
@@ -474,6 +476,7 @@ class Simulator:
             maces.append(iteration_mace)
             mrrs.append(mrr)
             ginis.append(gini)
+            sims.append(ils)
 
             if round_idx % L == 0:
                 # Clicks that happened during the last L rounds are added to the rolling training dataset
@@ -497,4 +500,4 @@ class Simulator:
                     self.model.to(initial_model.device)
                     _ = self.model.fit(bootstrapped_df, debug=False)
 
-        return bootstrapped_df, maces, kl_divs, maps, coverages, mrrs, ginis
+        return bootstrapped_df, maces, kl_divs, maps, coverages, mrrs, ginis, sims
