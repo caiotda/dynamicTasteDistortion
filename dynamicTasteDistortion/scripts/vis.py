@@ -52,7 +52,7 @@ def plot_metric_comparison(
 ):
     metric_map = {
         "mace": 0,
-        "div": 1,
+        "diver": 1,
         "map": 2,
         "coverage": 3,
         "mrr": 4,
@@ -62,7 +62,7 @@ def plot_metric_comparison(
 
     metric_name_to_nice_name = {
         "mace": "Mean Average Calibration Error",
-        "div": "Average Distribution divergence",
+        "diver": "Average Distribution divergence",
         "map": "Mean Average Precision",
         "coverage": "Catalog Coverage",
         "mrr": "Mean Reciprocal Rank",
