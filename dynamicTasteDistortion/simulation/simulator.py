@@ -22,7 +22,7 @@ from calibratedRecs.calibrationUtils import (
 )
 
 from calibratedRecs.reranking_utils import rerank_by_calibration
-from calibratedRecs.metrics import mace, get_avg_kl_div
+from calibratedRecs.metrics import mace, get_avg_divergence
 from dynamicTasteDistortion.simulation.simulationUtils import (
     encode_interaction_matrix,
     build_interaction_timestamp_matrix,
@@ -76,6 +76,7 @@ class Simulator:
             if model is not None
             else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )
+        self.dist_function = "hellinger"
         # Probability of acquiring new preferences from examined, but unclicked items
         self.preference_update_rate = preference_update_rate
         self.compare_to_h0 = compare_to_h_0
@@ -111,7 +112,10 @@ class Simulator:
         )
 
         self.use_random_rec = True if model is None else False
-        self.model = model.to(self.device)
+        if model is not None:
+            self.model = model.to(self.device)
+        else:
+            self.model = model
 
         self.users = torch.tensor(users, device=self.device)
 
@@ -363,6 +367,7 @@ class Simulator:
                 calib_k=self.top_k_for_evaluation,
                 item2genreMap=self.item2genreMap,
                 calibration_type=self.calibration_type,
+                dist_function=self.dist_function,
             )
         return rec, score
 
@@ -398,7 +403,7 @@ class Simulator:
 
         H_0 = self.click_matrix.copy()
         maces = []
-        kl_divs = []
+        divergences = []
         maps = []
         mrrs = []
         coverages = []
@@ -426,7 +431,7 @@ class Simulator:
         # Coldstart model on bootstrap
         print("Coldstarting model...")
         if not self.use_random_rec:
-            self.model.fit(H_0)
+            self.model.fit(H_0, debug=False)
         print("Done!")
 
         catalog_items = self.items.tolist()
@@ -455,8 +460,11 @@ class Simulator:
                 k=self.top_k_for_evaluation,
             )
 
-            iteration_avg_kl_div = get_avg_kl_div(
-                self.users, user_history_tensor, rec_genre_distribution_tensor
+            iteration_avg_divergence = get_avg_divergence(
+                self.users,
+                user_history_tensor,
+                rec_genre_distribution_tensor,
+                div=self.dist_function,
             )
 
             # What was interacted with (round_df) gets added to the running click df.
@@ -479,7 +487,7 @@ class Simulator:
 
             coverages.append(coverage)
             maps.append(map_k)
-            kl_divs.append(iteration_avg_kl_div)
+            divergences.append(iteration_avg_divergence)
             maces.append(iteration_mace)
             mrrs.append(mrr)
             ginis.append(gini)
@@ -510,7 +518,7 @@ class Simulator:
         return (
             bootstrapped_df,
             maces,
-            kl_divs,
+            divergences,
             maps,
             coverages,
             mrrs,

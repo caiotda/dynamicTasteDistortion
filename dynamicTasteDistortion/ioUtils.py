@@ -55,8 +55,8 @@ def read_metrics(cfg_file, should_remove_outliers=False):
     maces = pd.read_pickle(file_name)
 
     # Read kl divs pickle file
-    file_name = base_artifacts_path / "kl_divs.pkl"
-    kl_divs = pd.read_pickle(file_name)
+    file_name = base_artifacts_path / "divergences.pkl"
+    divergences = pd.read_pickle(file_name)
 
     # Read MAP pickle file
     # TODO: salvei esse arquivo com o nome errado. Vou ter que arrumar
@@ -81,13 +81,13 @@ def read_metrics(cfg_file, should_remove_outliers=False):
     diversities = pd.read_pickle(file_name)
     if should_remove_outliers:
         maces = remove_outliers(maces)
-        kl_divs = remove_outliers(kl_divs)
+        divergences = remove_outliers(divergences)
         map_k = remove_outliers(map_k)
         catalog_coverage = remove_outliers(catalog_coverage)
         mrr = remove_outliers(mrr)
         gini = remove_outliers(gini)
         diversities = remove_outliers(diversities)
-    return maces, kl_divs, map_k, catalog_coverage, mrr, gini, diversities
+    return maces, divergences, map_k, catalog_coverage, mrr, gini, diversities
 
 
 def load_bootstrapped_clicks(data_type, size, num_users):
