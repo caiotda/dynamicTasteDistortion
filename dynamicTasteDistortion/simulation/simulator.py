@@ -112,7 +112,10 @@ class Simulator:
         )
 
         self.use_random_rec = True if model is None else False
-        self.model = model.to(self.device)
+        if model is not None:
+            self.model = model.to(self.device)
+        else:
+            self.model = model
 
         self.users = torch.tensor(users, device=self.device)
 
@@ -428,7 +431,7 @@ class Simulator:
         # Coldstart model on bootstrap
         print("Coldstarting model...")
         if not self.use_random_rec:
-            self.model.fit(H_0)
+            self.model.fit(H_0, debug=False)
         print("Done!")
 
         catalog_items = self.items.tolist()
