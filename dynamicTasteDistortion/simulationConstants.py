@@ -5,7 +5,7 @@ input_size_to_file_name = {
 }
 
 MOVIELENS_PATH = "dynamicTasteDistortion/data/movielens"
-STEAM_PATH = "dynamicTasteDistortion/data/steam"
+FOOD_PATH = 'dynamicTasteDistortion/data/food'
 YELP_PATH = "dynamicTasteDistortion/data/yelp"
 
 ARTIFACTS_PATH = "dynamicTasteDistortion/artifacts"
