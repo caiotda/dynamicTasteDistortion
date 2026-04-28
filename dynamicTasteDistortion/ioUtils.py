@@ -169,10 +169,11 @@ def get_or_create_oracle_model_artifacts(df, data_type, size):
     else:
         os.makedirs(f"{MODEL_ARTIFACTS_PATH}/{data_type}_{size}/", exist_ok=True)
         print("Starting model selection...")
-        if data_type == "ml":
+        if data_type != "food":
             class_cutoff = 4.0
         else:
             class_cutoff = 3.0
+        print(f"Dataset a ser usado pra selecionar o modelo: {df}")
         oracle_model, f1_results = choose_best_model(df, class_cutoff=class_cutoff)
         save_pickle_artifact(oracle_model, oracle_model_path)
         destination_dir = f"{RESULTS_PATH}/{data_type}_{size}"

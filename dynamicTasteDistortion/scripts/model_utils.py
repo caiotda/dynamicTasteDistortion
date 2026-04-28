@@ -228,6 +228,8 @@ def choose_best_model(df, class_cutoff=4.0):
         test_pct=0.15,
     )
 
+    print(f"Separação de dataset baseado em tempo. Tamanho de treino, val e test: {len(train_df)}; {len(test_df)}; {len(val_df)}")
+
     train_surprise = SurpriseDataset.load_from_df(
         train_df[["user", "item", "rating"]], reader
     )
