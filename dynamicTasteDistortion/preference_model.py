@@ -107,7 +107,7 @@ def main():
     print("Creating oracle model...")
     oracle_model = get_or_create_oracle_model_artifacts(df, data_type, file_size)
 
-    if data_type != "ml":
+    if data_type != "food":
         class_cutoff = 3.0
     else:
         class_cutoff = 4.0
