@@ -3,6 +3,7 @@ import pandas as pd
 from dynamicTasteDistortion.scripts.data_utils import (
     filter_inactive_users,
     preprocess_genres,
+    standardize_ids,
 )
 
 pd.options.mode.chained_assignment = None
@@ -69,19 +70,20 @@ def read_food_raw():
     food_url = "https://www.kaggle.com/api/v1/datasets/download/shuyangli94/food-com-recipes-and-user-interactions"
     _ = download(food_url, FOOD_PATH)
     print("Download finished! Enriching interactions with genre information")
-    interactions = pd.read_csv(f"{FOOD_PATH}/RAW_interactions.csv").rename(
-        columns={
-            "user_id": USER_COL,
-            "recipe_id": ITEM_COL,
-            "rating": RATING_COL
-        }
-    ).drop(columns=["review"])
-
+    interactions = (
+        pd.read_csv(f"{FOOD_PATH}/RAW_interactions.csv")
+        .rename(
+            columns={"user_id": USER_COL, "recipe_id": ITEM_COL, "rating": RATING_COL}
+        )
+        .drop(columns=["review"])
+    )
 
     metadata = pd.read_csv(f"{FOOD_PATH}/RAW_recipes.csv")
 
     # metadata["tags"] = metadata["tags"].apply(ast.literal_eval)
-    metadata = metadata[["id", "tags"]].rename(columns={"id": ITEM_COL, "tags": GENRES_COL})
+    metadata = metadata[["id", "tags"]].rename(
+        columns={"id": ITEM_COL, "tags": GENRES_COL}
+    )
 
     return interactions.merge(metadata, on=ITEM_COL)
 
@@ -194,11 +196,14 @@ def process_df(df, rating_threshold=4):
     print("Preprocessing dataset...")
     processed_df = df.copy()
     processed_df = processed_df[~processed_df[GENRES_COL].isna()]
-    filtered_df = filter_inactive_users(processed_df)
-    filtered_df["binarized_rating"] = filtered_df[RATING_COL].apply(
+    processed_df["binarized_rating"] = processed_df[RATING_COL].apply(
         lambda rating: int(rating >= rating_threshold)
     )
-    return filtered_df
+    processed_df["timestamp"] = (
+        pd.to_datetime(processed_df["date"]).astype("int64") // 10**9
+    ).drop(columns=["date"])
+    return processed_df
+
 
 def get_ml_df(size):
     raw_df = read_ml_raw(size)
@@ -207,17 +212,18 @@ def get_ml_df(size):
 
 def get_yelp_df(size):
     raw_df = read_yelp_raw(size)
-    cleaned =  process_df(raw_df, rating_threshold=4)
-    print(cleaned)
-    cleaned[GENRES_COL] = preprocess_genres(cleaned, GENRES_COL, SEP=',')
-    return cleaned
+    cleaned = process_df(raw_df, rating_threshold=4)
+    cleaned[GENRES_COL] = preprocess_genres(cleaned, GENRES_COL, SEP=",")
+    final_df, _, _ = standardize_ids(cleaned)
+    return final_df
 
 
 def get_food_df():
     raw_df = read_food_raw()
-    cleaned =  process_df(raw_df, rating_threshold=3)
+    cleaned = process_df(raw_df, rating_threshold=3)
     cleaned[GENRES_COL] = cleaned[GENRES_COL].apply(ast.literal_eval)
-    return cleaned
+    filtered_df = filter_inactive_users(cleaned, threshold=REVIEWS_PER_USER_THRESHOLD)
+    return filtered_df
 
 
 def load_df(data_type, size):
@@ -262,12 +268,18 @@ def main():
     if args.data == "food":
         df = get_food_df()
         if size > df.shape[0]:
-            print(f"Food.com dataset is at most 1m interactions, can´t get size of . No filtering will be applied")
-        output_file = f"{FOOD_PATH}/food_df"
+            print(
+                f"Food.com dataset is at most 1m interactions, can´t get size of {size}. No filtering will be applied"
+            )
+        output_file = f"{FOOD_PATH}/food_{output_file_size}"
 
     df.to_csv(f"{output_file}.csv", index=False)
     df.to_pickle(f"{output_file}.pkl")
-    print(f"Processed dataset saved to path {output_file}")
+    print(
+        f"Processed dataset saved to path {output_file}; Dataset has {len(df)} interactions, "
+        f"{df[USER_COL].nunique()} users, {df[ITEM_COL].nunique()} items and sparsity "
+        f"{len(df) / (df[USER_COL].nunique() * df[ITEM_COL].nunique()):.4f}"
+    )
 
 
 if __name__ == "__main__":

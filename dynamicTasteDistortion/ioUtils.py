@@ -165,15 +165,15 @@ def get_or_create_oracle_model_artifacts(df, data_type, size):
         print(
             f"Oracle model trained on {data_type}_{size} found!Skipping model selection"
         )
-        oracle_model_artifact = load_pickle_artifact(oracle_model_path)
-
-        model_class = oracle_model_artifact["model_class"]
-        model_params = oracle_model_artifact["params"]
-        oracle_model = model_class(**model_params)
+        oracle_model = load_pickle_artifact(oracle_model_path)
     else:
         os.makedirs(f"{MODEL_ARTIFACTS_PATH}/{data_type}_{size}/", exist_ok=True)
         print("Starting model selection...")
-        oracle_model, f1_results = choose_best_model(df)
+        if data_type == "ml":
+            class_cutoff = 4.0
+        else:
+            class_cutoff = 3.0
+        oracle_model, f1_results = choose_best_model(df, class_cutoff=class_cutoff)
         save_pickle_artifact(oracle_model, oracle_model_path)
         destination_dir = f"{RESULTS_PATH}/{data_type}_{size}"
         os.makedirs(destination_dir, exist_ok=True)

@@ -11,7 +11,7 @@ import torch
 from dynamicTasteDistortion.simulationConstants import (
     USER_COL,
     MOVIELENS_PATH,
-    STEAM_PATH,
+    FOOD_PATH,
     YELP_PATH,
     input_size_to_file_name,
 )
@@ -23,7 +23,7 @@ from dynamicTasteDistortion.ioUtils import (
 )
 from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 
-DATA_TO_PATH = {"ml": MOVIELENS_PATH, "yelp": YELP_PATH, "steam": STEAM_PATH}
+DATA_TO_PATH = {"ml": MOVIELENS_PATH, "yelp": YELP_PATH, "food": FOOD_PATH}
 
 
 def split_train_test_per_user(df, train_frac=0.8):
@@ -45,7 +45,7 @@ def split_train_test_per_user(df, train_frac=0.8):
     return train_df, test_df
 
 
-def fit_evaluate(model, full_df, test_size=0.3):
+def fit_evaluate(model, full_df, test_size=0.3, class_cutoff=4.0):
 
     df_main_cols = full_df[["user", "item", "rating"]]
     trainset, testset = train_test_split(df_main_cols, test_size=test_size)
@@ -55,8 +55,8 @@ def fit_evaluate(model, full_df, test_size=0.3):
 
     fit_model = model.fit(trainset)
     predictions = model.test(testset)
-    y_pred = [1 if pred.est >= 4 else 0 for pred in predictions]
-    y_true = [1 if pred.r_ui >= 4 else 0 for pred in predictions]
+    y_pred = [1 if pred.est >= class_cutoff else 0 for pred in predictions]
+    y_true = [1 if pred.r_ui >= class_cutoff else 0 for pred in predictions]
     test_set_f1_score = f1_score(y_true, y_pred)
 
     return fit_model, test_set_f1_score
@@ -78,9 +78,9 @@ def main():
 
     parser.add_argument(
         "--data",
-        choices=["ml", "yelp", "steam"],
+        choices=["ml", "yelp", "food"],
         required=True,
-        help="Dataset type: ml (MovieLens); yelp; steam",
+        help="Dataset type: ml (MovieLens); yelp; food",
     )
     args = parser.parse_args()
     data_type = args.data
@@ -107,8 +107,12 @@ def main():
     print("Creating oracle model...")
     oracle_model = get_or_create_oracle_model_artifacts(df, data_type, file_size)
 
+    if data_type != "ml":
+        class_cutoff = 3.0
+    else:
+        class_cutoff = 4.0
     print("Fitting and evaluating oracle model...")
-    trained_model, f1_score_test = fit_evaluate(oracle_model, full_df=df, test_size=0.3)
+    trained_model, f1_score_test = fit_evaluate(oracle_model, full_df=df, test_size=0.3, class_cutoff=class_cutoff)
     print(
         f"Model selection finished! model achieved f1 score of {f1_score_test:.2f} on test_set"
     )

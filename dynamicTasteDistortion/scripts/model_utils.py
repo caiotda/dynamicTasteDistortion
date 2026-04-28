@@ -215,7 +215,7 @@ class ModelChooser:
         return samples
 
 
-def choose_best_model(df):
+def choose_best_model(df, class_cutoff=4.0):
     f1_results = {}
 
     model_names = ["SVD", "SVD++", "NMF"]
@@ -255,8 +255,8 @@ def choose_best_model(df):
             model.fit(trainset_surprise)
             predictions = model.test(validation_set_surprise)
 
-            y_pred = [1 if pred.est >= 4 else 0 for pred in predictions]
-            y_true = [1 if pred.r_ui >= 4 else 0 for pred in predictions]
+            y_pred = [1 if pred.est >= class_cutoff else 0 for pred in predictions]
+            y_true = [1 if pred.r_ui >= class_cutoff else 0 for pred in predictions]
             val_f1 = f1_score(y_true, y_pred)
 
             if val_f1 > best_score:
