@@ -142,6 +142,11 @@ def get_timestamp_behavior_path(data_type, file_size, num_users):
 
 def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
     num_users = len(users)
+    if data_type == "ml":
+        class_cutoff = 4.0
+    else:
+        class_cutoff = 3.0
+
     oracle_output_path = get_oracle_matrix_path(data_type, file_size, num_users)
     if os.path.exists(oracle_output_path):
         print(
@@ -151,7 +156,10 @@ def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
     else:
         print("Filling up rating matrix...")
         filled_oracle_matrix = fill_out_matrix(
-            base_df=df, model=oracle_model, user_sample=users
+            base_df=df,
+            model=oracle_model,
+            user_sample=users,
+            rating_cutoff=class_cutoff,
         )
         print(f"Writing filled out matrix to {oracle_output_path}")
     filled_oracle_matrix.to_pickle(oracle_output_path)

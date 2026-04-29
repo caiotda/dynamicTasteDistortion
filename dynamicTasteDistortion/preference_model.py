@@ -92,18 +92,8 @@ def main():
     print(f"Loading base dataset from {file_path}...")
     base_file = pd.read_pickle(file_path)
     print("Done!")
-    candidates = base_file[USER_COL].unique().tolist()
-    if num_users is not None:
-        idx = torch.randperm(len(candidates))[:num_users]
-        users = [candidates[i] for i in idx.tolist()]
 
-    else:
-        users = candidates
-
-    base_df = base_file[base_file[USER_COL].isin(users)]
-    df, user_id_map, _ = standardize_ids(base_df)
-    users = [user_id_map[user] for user in users]
-
+    df, _, _ = standardize_ids(base_file)
     print("Creating oracle model...")
     oracle_model = get_or_create_oracle_model_artifacts(df, data_type, file_size)
 
@@ -112,14 +102,28 @@ def main():
     else:
         class_cutoff = 4.0
     print("Fitting and evaluating oracle model...")
-    trained_model, f1_score_test = fit_evaluate(oracle_model, full_df=df, test_size=0.3, class_cutoff=class_cutoff)
+    trained_model, f1_score_test = fit_evaluate(
+        oracle_model, full_df=df, test_size=0.3, class_cutoff=class_cutoff
+    )
     print(
         f"Model selection finished! model achieved f1 score of {f1_score_test:.2f} on test_set"
     )
-    print("Creating filled oracle preference matrix...")
+    print(
+        f"Creating filled oracle preference matrix for sampel of {num_users} users..."
+    )
+    candidates = df[USER_COL].unique().tolist()
+
+    if num_users is not None:
+        idx = torch.randperm(len(candidates))[:num_users]
+        users = [candidates[i] for i in idx.tolist()]
+
+    else:
+        users = candidates
+
+    prediction_df = df[df[USER_COL].isin(users)]
     _ = get_or_create_oracle_matrix(
         oracle_model=trained_model,
-        df=df,
+        df=prediction_df,
         data_type=data_type,
         file_size=file_size,
         users=users,
