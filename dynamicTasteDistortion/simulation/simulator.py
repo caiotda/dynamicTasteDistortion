@@ -100,11 +100,13 @@ class Simulator:
         )
         self.n_users = filtered_oracle_matrix[USER_COL].max() + 1
         self.n_items = filtered_oracle_matrix[ITEM_COL].max() + 1
-        self.item2genreMap = (
+        print(f"Filtered oracle matrix (antes de setar o map) \n {filtered_oracle_matrix}")
+        un_normalized_map = (
             filtered_oracle_matrix[[ITEM_COL, GENRES_COL]]
             .set_index(ITEM_COL)[GENRES_COL]
             .to_dict()
         )
+        self.item2genreMap = {k: list(v) for k, v in un_normalized_map.items()}
         self.oracle_tensor = pandas_df_to_sparse_tensor(filtered_oracle_matrix)
 
         self.interaction_recency_matrix = build_interaction_timestamp_matrix(
@@ -131,7 +133,8 @@ class Simulator:
             self.click_matrix = self.bootstrap_clicks(
                 k=100, num_interactions_bootstrapped=num_interactions_bootstrapped
             )
-
+        print(f"Click matrix (antes): {self.click_matrix}")
+        print(f"Item 2 genre map: {self.item2genreMap}")
         self.click_matrix[GENRES_COL] = (
             self.click_matrix[ITEM_COL]
             .map(self.item2genreMap)
@@ -141,9 +144,12 @@ class Simulator:
         )
         self.click_matrix = preprocess_dataframe_for_calibration(self.click_matrix)
         # Genre distribution per item.
+        print(f"Click matrix (Depois): {self.click_matrix}")
         self.p_g_i = build_item_genre_distribution_tensor(
             self.click_matrix, self.n_items
         )
+        #TODO: o problema é que o numero de generos no p_g_i não bate com o n_genres? que vem
+        # do item2genremap...
         n_genres = self.p_g_i.shape[1]
 
         # N_users x N_items matrix that tracks the most recent interaction between each
@@ -157,7 +163,9 @@ class Simulator:
         # And depends on the genre affinity between the user and the item.
         self.forgetting_probability = torch.ones_like(self.interaction_recency_matrix)
         self.genre_affinity = torch.zeros(self.n_users, n_genres, device=self.device)
-
+        print(f"Num users: {self.n_users}; num_genres: {n_genres}")
+        # TODO: problema atual: parece que na hora de atualizar o genre affinity, a click_matrix tem mais
+        # generos do que o n_genres?
         # Basic persistent configurations
         if base_artifacts_path is not None and not os.path.exists(base_artifacts_path):
             os.makedirs(base_artifacts_path)
@@ -186,6 +194,9 @@ class Simulator:
         )
 
         user_tensor = torch.tensor(users_ids, device=self.device)
+        print(f"User tensor shape: {user_tensor.shape}")
+        print(f"Shape dos generos dos itens interagios: {self.genre_tensor[clicked_items].shape}")
+        print(f"Numero de generos registrados: {self.p_g_i.shape[1]}")
         self.genre_affinity, G = update_genre_affinity_tensor(
             user_tensor, self.genre_affinity, clicked_items, self.genre_tensor
         )

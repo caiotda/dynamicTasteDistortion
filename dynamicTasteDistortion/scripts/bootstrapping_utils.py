@@ -1,3 +1,4 @@
+from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 import numpy as np
 import pandas as pd
 from surprise import Reader, Dataset as SurpriseDataset
@@ -83,7 +84,8 @@ def fill_out_matrix(base_df, model, user_sample, rating_cutoff=4.0, batch_size=5
     return df_filled
 
 def get_timestamp_behavior(base_df, sample):
-    df = base_df[base_df[USER_COL].isin(sample)]
+    users_df = base_df[base_df[USER_COL].isin(sample)]
+    df, _, _ = standardize_ids(users_df)
     avg_std_time_diff_per_user = (
         df.sort_values([USER_COL, "timestamp"])
         .groupby(USER_COL)["timestamp"]
