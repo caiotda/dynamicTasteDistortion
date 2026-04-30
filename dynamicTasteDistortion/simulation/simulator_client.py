@@ -122,7 +122,7 @@ def main():
             )
             ModelClass = model_type_to_class[model_type]
             tuner = HyperParameterTuner(bootstrapped_df, ModelClass)
-            model, cv_results, best_params = tuner.tune(truth_set=bootstrapped_df)
+            model, cv_results, best_params = tuner.tune(truth_set=bootstrapped_df, k=5)
             save_pickle_artifact(best_params, best_params_path)
             save_pickle_artifact(model, model_path)
             cv_results_save_path = get_cv_results_path(
@@ -132,9 +132,11 @@ def main():
 
             n_users = bootstrapped_df.user.max() + 1
             n_items = bootstrapped_df.item.max() + 1
+            dev = "cuda" if torch.cuda.is_available() else "cpu"
             model = ModelClass(
                 num_users=n_users,
                 num_items=n_items,
+                dev=dev,
                 **best_params,
             )
 

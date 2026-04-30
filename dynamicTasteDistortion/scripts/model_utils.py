@@ -153,16 +153,9 @@ class HyperParameterTuner:
         print(f"\nBest params: {best_params}")
         print(f"Best val MAP@{k}: {results_df.iloc[0]['map']:.4f}")
 
-        train_val_df = pd.concat([train_df, val_df])
         final_model = self.ModelClass(
             num_users=self.n_users, num_items=self.n_items, dev=self.dev, **best_params
         )
-        print(f"Training on train+val set...")
-        final_model.fit(train_val_df)
-        test_map = final_model.evaluate(
-            train_df=train_val_df, oot_df=test_df, oracle_df_pos=pos_truth_set, k=k
-        )
-        print(f"Final test MAP@{k}: {test_map:.4f}")
 
         return final_model, results_df, best_params
 
