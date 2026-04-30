@@ -211,6 +211,28 @@ def build_interaction_timestamp_matrix(
 
     return interaction_recency_matrix
 
+def get_user_feedback_from_predictions(oracle_tensor, recommendation_tensor):
+        """
+        Returns which items in the recommendation tensor were interacted by the simulated users
+
+        Args:
+            oracle_tensor (torch.tensor): N_users x n_items tensor where each entry denotes if
+                a given item was relevant to its user.
+            recommendation_tensor (torch.tensor): items recommended to each users (n_users, k)
+
+        Returns:
+            interaction_matrix (torch.tensor): binary matrix of shape (n_users, k) where
+            each entry encodes wether the n-th user clicked on the k-th item in the recommendation
+        """
+        assert (recommendation_tensor >= 0).all(), "Item IDs must be non-negative"
+        hit_matrix = map_prediction_to_preferences(
+            oracle_tensor, recommendation_tensor
+        )
+
+        interaction_matrix = encode_interaction_matrix(
+            recommendation_tensor, hit_matrix
+        )
+        return interaction_matrix
 
 def encode_interaction_matrix(predictions, hit_matrix):
     """

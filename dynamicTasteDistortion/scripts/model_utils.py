@@ -115,10 +115,7 @@ class HyperParameterTuner:
             val_pct=val_pct,
             test_pct=test_pct,
         )
-        pos_truth_set = truth_set[truth_set["rating"] == 1].copy()
-        pos_truth_set["rating"] = pos_truth_set["rating"].astype(int)
-        pos_truth_set["user"] = pos_truth_set["user"].astype(int)
-        pos_truth_set["item"] = pos_truth_set["item"].astype(int)
+        pos_truth_set = truth_set[truth_set["relevant"] == 1].copy()
         rng = np.random.default_rng(self.seed)
         results = []
         for i in trange(n_samples, desc="Processing tuning rounds"):
