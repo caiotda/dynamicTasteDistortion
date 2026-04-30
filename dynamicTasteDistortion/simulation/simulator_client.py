@@ -21,7 +21,7 @@ from dynamicTasteDistortion.ioUtils import (
     save_pickle_artifact,
 )
 
-from dynamicTasteDistortion.dataset_loader import load_df
+from dynamicTasteDistortion.dataset_loader import load_df, input_size_to_sample_size
 
 
 from scipy.stats import expon
@@ -142,7 +142,8 @@ def main():
             print(
                 f"Loading {data_type}_{file_size} dataset to fit Most Popular model..."
             )
-            df = load_df(data_type, size)
+            sample_size = input_size_to_sample_size[size]
+            df = load_df(data_type, size=sample_size)
             processed_df, _, _ = standardize_ids(df)
             model = MostPopularRecommender(processed_df)
         else:
