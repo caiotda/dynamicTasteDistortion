@@ -7,7 +7,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 seed = 42
 torch.manual_seed(seed)
 
-p
+
 def update_genre_affinity_tensor(
     users, genre_affinity, interacted_items_tensor, item_genre_tensor
 ):
