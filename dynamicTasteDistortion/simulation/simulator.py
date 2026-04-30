@@ -24,12 +24,11 @@ from calibratedRecs.calibrationUtils import (
 from calibratedRecs.reranking_utils import rerank_by_calibration
 from calibratedRecs.metrics import mace, get_avg_divergence
 from dynamicTasteDistortion.simulation.simulationUtils import (
-    encode_interaction_matrix,
+    get_user_feedback_from_predictions,
     build_interaction_timestamp_matrix,
     get_forget_probability,
     convert_item_genre_map_to_tensor,
     get_users_most_recent_interaction_timestamp,
-    map_prediction_to_preferences,
     random_rec,
     update_genre_affinity_tensor,
     update_oracle_from_hits,
@@ -195,26 +194,6 @@ class Simulator:
             self.interaction_recency_matrix, G
         )
 
-    def get_user_feedback_from_predictions(self, recommendation_tensor):
-        """
-        Returns which items in the recommendation tensor were interacted by the simulated users
-
-        Args:
-            recommendation_tensor (torch.tensor): items recommended to each users (n_users, k)
-
-        Returns:
-            interaction_matrix (torch.tensor): binary matrix of shape (n_users, k) where
-            each entry encodes wether the n-th user clicked on the k-th item in the recommendation
-        """
-        assert (recommendation_tensor >= 0).all(), "Item IDs must be non-negative"
-        hit_matrix = map_prediction_to_preferences(
-            self.oracle_tensor, recommendation_tensor
-        )
-
-        interaction_matrix = encode_interaction_matrix(
-            recommendation_tensor, hit_matrix
-        )
-        return interaction_matrix
 
     def simulate_user_feedback(self, rec, score, from_bootstrap=False):
         """
@@ -232,7 +211,7 @@ class Simulator:
                 user, item, rating (score). One row per (user, item) pair.
         """
         should_update_user_model = not from_bootstrap
-        feedback_matrix = self.get_user_feedback_from_predictions(rec)
+        feedback_matrix = get_user_feedback_from_predictions(self.oracle_tensor, rec)
         # We retrieve only clicked interactions, flagged as 1
         indices = torch.nonzero(feedback_matrix == 1, as_tuple=False)
         users_indices, click_positions = indices[:, 0].tolist(), indices[:, 1].tolist()
