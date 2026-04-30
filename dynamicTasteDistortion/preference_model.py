@@ -109,7 +109,7 @@ def main():
         f"Model selection finished! model achieved f1 score of {f1_score_test:.2f} on test_set"
     )
     print(
-        f"Creating filled oracle preference matrix for sampel of {num_users} users..."
+        f"Creating filled oracle preference matrix for sample of {num_users} users..."
     )
     candidates = df[USER_COL].unique().tolist()
 

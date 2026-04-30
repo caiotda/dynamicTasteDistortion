@@ -47,7 +47,6 @@ from dynamicTasteDistortion.simulationConstants import (
 )
 from dynamicTasteDistortion.simulation.tensorUtils import (
     pandas_df_to_sparse_tensor,
-    sparse_tensor_to_pandas_df,
 )
 
 
@@ -100,11 +99,12 @@ class Simulator:
         )
         self.n_users = filtered_oracle_matrix[USER_COL].max() + 1
         self.n_items = filtered_oracle_matrix[ITEM_COL].max() + 1
-        self.item2genreMap = (
+        un_normalized_map = (
             filtered_oracle_matrix[[ITEM_COL, GENRES_COL]]
             .set_index(ITEM_COL)[GENRES_COL]
             .to_dict()
         )
+        self.item2genreMap = {k: list(v) for k, v in un_normalized_map.items()}
         self.oracle_tensor = pandas_df_to_sparse_tensor(filtered_oracle_matrix)
 
         self.interaction_recency_matrix = build_interaction_timestamp_matrix(
@@ -118,10 +118,10 @@ class Simulator:
             self.model = model
 
         self.users = torch.tensor(users, device=self.device)
-
         self.items = torch.tensor(
-            list(oracle_matrix[ITEM_COL].drop_duplicates()), device=self.device
+            list(filtered_oracle_matrix[ITEM_COL].drop_duplicates()), device=self.device
         )
+
 
         # Check if we have a bootstrapped set of clicks set; if not, we run the bootstrapping
         # process.
@@ -131,7 +131,6 @@ class Simulator:
             self.click_matrix = self.bootstrap_clicks(
                 k=100, num_interactions_bootstrapped=num_interactions_bootstrapped
             )
-
         self.click_matrix[GENRES_COL] = (
             self.click_matrix[ITEM_COL]
             .map(self.item2genreMap)
@@ -141,8 +140,10 @@ class Simulator:
         )
         self.click_matrix = preprocess_dataframe_for_calibration(self.click_matrix)
         # Genre distribution per item.
+
+        filtered_oracle_matrix[GENRES_COL] = filtered_oracle_matrix[GENRES_COL].apply(tuple)
         self.p_g_i = build_item_genre_distribution_tensor(
-            self.click_matrix, self.n_items
+            filtered_oracle_matrix, self.n_items
         )
         n_genres = self.p_g_i.shape[1]
 
@@ -157,7 +158,8 @@ class Simulator:
         # And depends on the genre affinity between the user and the item.
         self.forgetting_probability = torch.ones_like(self.interaction_recency_matrix)
         self.genre_affinity = torch.zeros(self.n_users, n_genres, device=self.device)
-
+        # TODO: problema atual: parece que na hora de atualizar o genre affinity, a click_matrix tem mais
+        # generos do que o n_genres?
         # Basic persistent configurations
         if base_artifacts_path is not None and not os.path.exists(base_artifacts_path):
             os.makedirs(base_artifacts_path)

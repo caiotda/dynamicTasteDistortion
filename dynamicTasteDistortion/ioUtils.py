@@ -15,6 +15,8 @@ from dynamicTasteDistortion.simulationConstants import (
     input_size_to_file_name,
 )
 
+from dynamicTasteDistortion.scripts.data_utils import standardize_ids
+
 import os
 from pathlib import Path
 
@@ -155,12 +157,13 @@ def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
         filled_oracle_matrix = load_pickle_artifact(oracle_output_path)
     else:
         print("Filling up rating matrix...")
-        filled_oracle_matrix = fill_out_matrix(
+        filled_oracle_matrix_non_standart = fill_out_matrix(
             base_df=df,
             model=oracle_model,
             user_sample=users,
             rating_cutoff=class_cutoff,
         )
+        filled_oracle_matrix, _, _ = standardize_ids(filled_oracle_matrix_non_standart)
         print(f"Writing filled out matrix to {oracle_output_path}")
     filled_oracle_matrix.to_pickle(oracle_output_path)
     return filled_oracle_matrix
@@ -181,7 +184,6 @@ def get_or_create_oracle_model_artifacts(df, data_type, size):
             class_cutoff = 4.0
         else:
             class_cutoff = 3.0
-        print(f"Dataset a ser usado pra selecionar o modelo: {df}")
         oracle_model, f1_results = choose_best_model(df, class_cutoff=class_cutoff)
         save_pickle_artifact(oracle_model, oracle_model_path)
         destination_dir = f"{RESULTS_PATH}/{data_type}_{size}"
