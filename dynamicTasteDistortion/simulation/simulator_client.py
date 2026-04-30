@@ -122,7 +122,7 @@ def main():
             )
             ModelClass = model_type_to_class[model_type]
             tuner = HyperParameterTuner(bootstrapped_df, ModelClass)
-            model, cv_results, best_params = tuner.tune(truth_set=oracle_matrix)
+            model, cv_results, best_params = tuner.tune(truth_set=bootstrapped_df)
             save_pickle_artifact(best_params, best_params_path)
             save_pickle_artifact(model, model_path)
             cv_results_save_path = get_cv_results_path(
