@@ -180,7 +180,7 @@ def main():
         compare_to_h_0=compare_to_h_0,
     )
     simulated_df, maces, divergences, maps, coverages, mrrs, ginis, diversities = (
-        sim.simulate(L=num_rounds_per_eval, rounds=rounds, k=20)
+        sim.simulate(L=num_rounds_per_eval, rounds=rounds, k=50)
     )
 
     print(f"Done! Saving simulated interactions...")
