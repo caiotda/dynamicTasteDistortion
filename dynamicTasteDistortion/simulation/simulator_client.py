@@ -144,7 +144,10 @@ def main():
             print(
                 f"Loading {data_type}_{file_size} dataset to fit Most Popular model..."
             )
-            sample_size = input_size_to_sample_size[size]
+            if data_type != "ml":
+                sample_size = input_size_to_sample_size[size]
+            else:
+                sample_size = size
             df = load_df(data_type, size=sample_size)
             processed_df, _, _ = standardize_ids(df)
             model = MostPopularRecommender(processed_df)
