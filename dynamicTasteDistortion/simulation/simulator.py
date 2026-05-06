@@ -53,7 +53,6 @@ from tqdm import tqdm
 
 TS_NOW = pd.Timestamp.now().timestamp()
 
-
 class Simulator:
     def __init__(
         self,
@@ -264,13 +263,18 @@ class Simulator:
 
         interaction_df = interaction_df[interaction_df["relevant"] == 1.0]
 
-        n_users = rec.shape[0]
-        k = rec.shape[1]
+
+        # Keep only the top_k_for_evaluation in rec_df
+
+        rec_filtered = rec[:self.top_k_for_evaluation]
+        score_filtered = score[:self.top_k_for_evaluation]
+        n_users = rec_filtered.shape[0]
+        k = rec_filtered.shape[1]
         rec_df = pd.DataFrame(
             {
                 USER_COL: torch.arange(n_users).repeat_interleave(k).numpy(),
-                ITEM_COL: rec.reshape(-1).cpu().numpy(),
-                "rating": score.reshape(-1).cpu().numpy(),
+                ITEM_COL: rec_filtered.reshape(-1).cpu().numpy(),
+                "rating": score_filtered.reshape(-1).cpu().numpy(),
             }
         )
         # We're only interested in updating the user model on the simulation, not on the bootstrapping
