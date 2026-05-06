@@ -53,7 +53,6 @@ from tqdm import tqdm
 
 TS_NOW = pd.Timestamp.now().timestamp()
 
-
 class Simulator:
     def __init__(
         self,
