@@ -35,7 +35,7 @@ def plot_metrics_smoothed_overlay(
     ax.set_title(f"{metric_name} over Rounds")
     ax.set_xlabel("Simulation Round")
     ax.set_ylabel(metric_name)
-    ax.xaxis.set_minor_locator(AutoMinorLocator(step))
+    ax.xaxis.set_minor_locator(AutoMinorLocator(5))
     ax.grid(True, alpha=0.3, which="both")
     ax.legend()
 

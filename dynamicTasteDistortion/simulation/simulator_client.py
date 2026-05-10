@@ -34,7 +34,6 @@ from dynamicTasteDistortion.scripts.model_utils import (
 from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 import yaml
 
-
 model_type_to_class = {"bpr": bprMFWithClickDebiasing, "bpr_classic": bprMf}
 
 
@@ -72,6 +71,8 @@ def main():
     rounds = int(cfg["rounds"])
     num_rounds_per_eval = int(cfg["num_rounds_per_eval"])
     num_users = int(cfg["num_users"])
+    model_params = cfg.get("params", None)
+    overwrite_model_selection = True if model_params is not None else False
 
     preference_update_rate = float(cfg.get("preference_update_rate", 0))
     compare_to_h_0 = True if cfg.get("compare_to_h_0", "y") == "y" else False
@@ -89,24 +90,49 @@ def main():
     model_path_obj = Path(model_path)
     best_params_path_obj = Path(best_params_path)
 
-    if model_path_obj.exists():
-        print(
-            f"Best model {model_type} found for {data_type}_{file_size} with {num_users} at {model_path}."
+    n_users = bootstrapped_df.user.max() + 1
+    n_items = bootstrapped_df.item.max() + 1
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+
+    if overwrite_model_selection:
+        if model_type not in ("bpr", "bpr_classic"):
+            raise ValueError(
+                "overwrite_model_selection is not supported for most_popular or random model."
+            )
+        ModelClass = model_type_to_class[model_type]
+        print(f"Using predefined best params: {model_params}")
+        model = ModelClass(
+            num_users=n_users, num_items=n_items, dev=dev, **model_params
         )
-        print(f"model params: {load_pickle_artifact(best_params_path)}")
-        overwrite = (
-            input("Model artifact already exists. Overwrite and retrain? [y/N]: ")
-            .strip()
-            .lower()
-        )
-        if overwrite in ("n", "no", ""):
-            print("Using existing model and skipping hyperparameter tuning.")
-            model = load_pickle_artifact(model_path)
-        else:
-            print("Deleting existing model artifact and retraining.")
-            model_path_obj.unlink()
-            best_params_path_obj.unlink()
-            if model_type in ("bpr", "bpr_classic"):
+
+    elif model_type == "most_popular":
+        print(f"Loading {data_type}_{file_size} dataset to fit Most Popular model...")
+        sample_size = size if data_type == "ml" else input_size_to_sample_size[size]
+        df = load_df(data_type, size=sample_size)
+        processed_df, _, _ = standardize_ids(df)
+        model = MostPopularRecommender(processed_df)
+
+    elif model_type in ("bpr", "bpr_classic"):
+        ModelClass = model_type_to_class[model_type]
+
+        if model_path_obj.exists():
+            print(
+                f"Best model {model_type} found for {data_type}_{file_size} with {num_users} at {model_path}."
+            )
+            print(f"Model params: {load_pickle_artifact(best_params_path)}")
+            overwrite = (
+                input("Model artifact already exists. Overwrite and retrain? [y/N]: ")
+                .strip()
+                .lower()
+            )
+
+            if overwrite in ("n", "no", ""):
+                print("Using existing model and skipping hyperparameter tuning.")
+                model = load_pickle_artifact(model_path)
+            else:
+                print("Deleting existing model artifact and retraining.")
+                model_path_obj.unlink()
+                best_params_path_obj.unlink()
                 cv_results_save_path = get_cv_results_path(
                     data_type, file_size, num_users, model_type
                 )
@@ -114,13 +140,10 @@ def main():
                 if cv_results_path_obj.exists():
                     cv_results_path_obj.unlink()
 
-    if not model_path_obj.exists():
-
-        if model_type in ("bpr", "bpr_classic"):
+        if not model_path_obj.exists():  # either never existed, or just deleted above
             print(
                 f"No {model_type} found for {data_type}_{file_size} with {num_users} sampled users. Starting hyperparameter tuning."
             )
-            ModelClass = model_type_to_class[model_type]
             tuner = HyperParameterTuner(bootstrapped_df, ModelClass)
             model, cv_results, best_params = tuner.tune(truth_set=bootstrapped_df, k=5)
             save_pickle_artifact(best_params, best_params_path)
@@ -129,31 +152,12 @@ def main():
                 data_type, file_size, num_users, model_type
             )
             cv_results.to_csv(cv_results_save_path)
-
-            n_users = bootstrapped_df.user.max() + 1
-            n_items = bootstrapped_df.item.max() + 1
-            dev = "cuda" if torch.cuda.is_available() else "cpu"
             model = ModelClass(
-                num_users=n_users,
-                num_items=n_items,
-                dev=dev,
-                **best_params,
+                num_users=n_users, num_items=n_items, dev=dev, **best_params
             )
 
-        elif model_type == "most_popular":
-            print(
-                f"Loading {data_type}_{file_size} dataset to fit Most Popular model..."
-            )
-            if data_type != "ml":
-                sample_size = input_size_to_sample_size[size]
-            else:
-                sample_size = size
-            df = load_df(data_type, size=sample_size)
-            processed_df, _, _ = standardize_ids(df)
-            model = MostPopularRecommender(processed_df)
-        else:
-            model = None
-
+    else:
+        model = None
     userToExpDistribution = {
         user: expon(scale=row["median_timestamp_diff"])
         for user, row in timestamp_distribution.iterrows()
@@ -180,7 +184,7 @@ def main():
         compare_to_h_0=compare_to_h_0,
     )
     simulated_df, maces, divergences, maps, coverages, mrrs, ginis, diversities = (
-        sim.simulate(L=num_rounds_per_eval, rounds=rounds, k=50)
+        sim.simulate(L=num_rounds_per_eval, rounds=rounds, k=20)
     )
 
     print(f"Done! Saving simulated interactions...")

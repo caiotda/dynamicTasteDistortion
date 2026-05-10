@@ -73,6 +73,7 @@ class Simulator:
             if model is not None
             else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )
+        print(f"Default device for torch operations: {self.device}")
         self.dist_function = "hellinger"
         # Probability of acquiring new preferences from examined, but unclicked items
         self.preference_update_rate = preference_update_rate
@@ -497,7 +498,7 @@ class Simulator:
                 if not self.use_random_rec:
                     print("retraining model...")
                     self.model = copy.deepcopy(initial_model)
-                    self.model.to(initial_model.device)
+                    self.model = self.model.to(self.device)
                     _ = self.model.fit(bootstrapped_df, debug=False)
 
         return (

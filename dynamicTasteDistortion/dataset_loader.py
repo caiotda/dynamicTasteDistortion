@@ -56,6 +56,7 @@ def download(dataset_url, destination_dir):
         for f in os.listdir("."):
             if f.endswith(".tmp"):
                 os.remove(f)
+    print("Downloading...")
     file_name = wget.download(dataset_url, f"{file_name}.zip")
     print("Unzipping...")
     with zipfile.ZipFile(file_name, "r") as zip_ref:
