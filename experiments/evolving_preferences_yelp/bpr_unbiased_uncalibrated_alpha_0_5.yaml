@@ -1,11 +1,11 @@
 size: s
-data: ml
+data: yelp
 
 rounds: 2500
 num_rounds_per_eval: 250
 num_users: 1000
 
 model: bpr
-preference_update_rate: 0.3
+preference_update_rate: 0.5
 use_oracle_matrix: y
-exp_name: bpr_classic_uncalibrated_alpha_0_3
+exp_name: bpr_classic_uncalibrated_alpha_0_5

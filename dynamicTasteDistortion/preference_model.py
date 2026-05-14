@@ -26,25 +26,6 @@ from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 DATA_TO_PATH = {"ml": MOVIELENS_PATH, "yelp": YELP_PATH, "food": FOOD_PATH}
 
 
-def split_train_test_per_user(df, train_frac=0.8):
-    train_parts = []
-    test_parts = []
-
-    for _, user_df in df.groupby("user"):
-        user_df = user_df.sort_values("timestamp")
-
-        n_train = int(len(user_df) * train_frac)
-
-        train_parts.append(user_df.iloc[:n_train])
-        test_parts.append(user_df.iloc[n_train:])
-
-    train_df = pd.concat(train_parts).reset_index(drop=True)
-
-    test_df = pd.concat(test_parts).reset_index(drop=True)
-
-    return train_df, test_df
-
-
 def fit_evaluate(model, full_df, test_size=0.3, class_cutoff=4.0):
 
     df_main_cols = full_df[["user", "item", "rating"]]

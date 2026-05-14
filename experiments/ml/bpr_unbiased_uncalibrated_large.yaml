@@ -9,3 +9,11 @@ model: bpr
 preference_update_rate: 0.1
 
 exp_name: bpr_unbiased_uncalibrated_large
+params:
+  {
+    "factors": 64,
+    "lr": 0.0001,
+    "reg_lambda": 0.00001,
+    "num_negatives": 10,
+    "n_epochs": 10,
+  }

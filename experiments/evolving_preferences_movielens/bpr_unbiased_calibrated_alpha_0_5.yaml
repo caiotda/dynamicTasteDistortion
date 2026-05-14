@@ -6,10 +6,10 @@ num_rounds_per_eval: 250
 num_users: 1000
 
 model: bpr
-preference_update_rate: 0.1
+preference_update_rate: 0.5
 use_oracle_matrix: y
 calibrate: constant
-exp_name: bpr_classic_calibrated_constant_alpha_0_1
+exp_name: bpr_classic_calibrated_constant_alpha_0_5
 params:
   {
     "factors": 64,

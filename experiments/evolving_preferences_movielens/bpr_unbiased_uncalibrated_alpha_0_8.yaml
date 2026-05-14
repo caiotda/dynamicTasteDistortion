@@ -1,8 +1,8 @@
 size: s
 data: ml
 
-rounds: 500
-num_rounds_per_eval: 5
+rounds: 2500
+num_rounds_per_eval: 250
 num_users: 1000
 
 model: bpr
