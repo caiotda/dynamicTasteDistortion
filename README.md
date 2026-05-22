@@ -44,6 +44,7 @@ Each experiment file has the following arguments
 * model: model used in the recommendation. We currently support unbiased-bpr, bpr, random recommendation, most popular recommendation. In the paper, we report only BPR based results for simplciity
 * prefenrece_update_rate: the $\alpha$ parameter. Defaults to 0.1 in our experiments, except for RQ2 related experiments.
 * exp_name: name of the experiment. Important only for persistency reasons.
+* [OPTIONAL] params: bpr params to be used. This overwrites the hyperparameter tuning flow.
 
 ## Experiment data
 
