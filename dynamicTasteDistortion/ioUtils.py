@@ -61,8 +61,8 @@ def read_metrics(cfg_file, should_remove_outliers=False):
     divergences = pd.read_pickle(file_name)
 
     # Read MAP pickle file
-    # TODO: salvei esse arquivo com o nome errado. Vou ter que arrumar
-    # na mão, rerodar, e depois ajustar aqui e no simulator_client
+    # TODO: file is persisted with wrong name, but read correctly
+    # ill fix this soon
     file_name = base_artifacts_path / "mace_at_k.pkl"
     map_k = pd.read_pickle(file_name)
 

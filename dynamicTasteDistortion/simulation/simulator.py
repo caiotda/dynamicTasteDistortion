@@ -55,6 +55,7 @@ TS_NOW = pd.Timestamp.now().timestamp()
 
 class Simulator:
     def __init__(
+
         self,
         oracle_matrix,
         model,
@@ -67,7 +68,34 @@ class Simulator:
         preference_update_rate=0,
         compare_to_h_0=True,
     ):
-        # TODO: documentação dos parametros
+        """
+        Initialize a Simulator instance for dynamic taste distortion simulation.
+
+        Parameters
+        ----------
+        oracle_matrix : pd.DataFrame
+            Ground truth interaction matrix containing user-item interactions and metadata.
+        calibration_type : str, optional
+            Type of calibration to apply during simulation.
+        user_timestamp_distribution : dict
+            Maps user IDs to their timestamp delta probability distributions.
+        model : torch.nn.Module, optional
+            Recommendation model. If None, uses random recommendations.
+        initial_date : datetime, optional
+            Starting date for the simulation. Defaults to current timestamp.
+        base_artifacts_path : str, optional
+            Directory path for storing simulation artifacts.
+        num_interactions_bootstrapped : int, default=1_000_000
+            Number of interactions to bootstrap if no bootstrapped data provided.
+        bootstrapped_df : pd.DataFrame, optional
+            Pre-computed bootstrapped click interactions. If None, bootstraps from oracle matrix.
+        preference_update_rate : float, default=0
+            Probability of acquiring new preferences from examined but unclicked items.
+        compare_to_h_0 : bool, default=True
+            Whether to compare simulation results against bootstrapped clicks, or to
+            perform a sort of sliding window comparison between current recommendation and
+            last L clicks.
+        """
         self.device = (
             model.device
             if model is not None
@@ -78,7 +106,6 @@ class Simulator:
         # Probability of acquiring new preferences from examined, but unclicked items
         self.preference_update_rate = preference_update_rate
         self.compare_to_h0 = compare_to_h_0
-        # TODO: faz sentido esse parametro / valor do parametro?
         self.top_k_for_evaluation = 10
         self.calibration_type = calibration_type
         # Maps each user_id to their average timestamp between interactions probability
@@ -157,8 +184,7 @@ class Simulator:
         # And depends on the genre affinity between the user and the item.
         self.forgetting_probability = torch.ones_like(self.interaction_recency_matrix)
         self.genre_affinity = torch.zeros(self.n_users, n_genres, device=self.device)
-        # TODO: problema atual: parece que na hora de atualizar o genre affinity, a click_matrix tem mais
-        # generos do que o n_genres?
+
         # Basic persistent configurations
         if base_artifacts_path is not None and not os.path.exists(base_artifacts_path):
             os.makedirs(base_artifacts_path)
