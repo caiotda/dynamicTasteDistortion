@@ -11,15 +11,14 @@ from dynamicTasteDistortion.simulationConstants import (
 from dynamicTasteDistortion.simulation.simulator import Simulator
 
 from dynamicTasteDistortion.ioUtils import (
-    get_best_params_path,
-    get_model_path,
+    get_model_and_params_paths,
     get_oracle_matrix_path,
     get_timestamp_behavior_path,
     load_bootstrapped_clicks,
     load_pickle_artifact,
     get_cv_results_path,
     save_pickle_artifact,
-    extract_experiment_configuration
+    extract_experiment_configuration,
 )
 
 from dynamicTasteDistortion.dataset_loader import load_df, input_size_to_sample_size
@@ -51,7 +50,6 @@ def main():
     with open(args.exp_file, "r") as f:
         cfg = yaml.safe_load(f)
 
-
     config = extract_experiment_configuration(cfg)
     model_type = config["model_type"]
     data_type = config["data_type"]
@@ -64,21 +62,18 @@ def main():
     model_params = config["model_params"]
     overwrite_model_selection = config["overwrite_model_selection"]
 
-    timestamp_distribution = pd.read_csv(
-        get_timestamp_behavior_path(data_type, file_size, num_users)
-    )
-    oracle_matrix = load_pickle_artifact(
-        get_oracle_matrix_path(data_type, file_size, num_users)
-    )
-    bootstrapped_df = load_bootstrapped_clicks(data_type, file_size, num_users)
-
-    model_path = get_model_path(data_type, file_size, num_users, model_type)
-    best_params_path = get_best_params_path(data_type, file_size, num_users, model_type)
-    model_path_obj = Path(model_path)
-    best_params_path_obj = Path(best_params_path)
-
+    timestamp_distribution = pd.read_csv(get_timestamp_behavior_path(config))
+    userToExpDistribution = {
+        user: expon(scale=row["median_timestamp_diff"])
+        for user, row in timestamp_distribution.iterrows()
+    }
+    oracle_matrix = load_pickle_artifact(get_oracle_matrix_path(config))
+    bootstrapped_df = load_bootstrapped_clicks(config)
     n_users = bootstrapped_df.user.max() + 1
     n_items = bootstrapped_df.item.max() + 1
+
+    model_path, best_params_path = get_model_and_params_paths(config)
+
     dev = "cuda" if torch.cuda.is_available() else "cpu"
 
     if overwrite_model_selection:
@@ -102,7 +97,7 @@ def main():
     elif model_type in ("bpr", "bpr_classic"):
         ModelClass = model_type_to_class[model_type]
 
-        if model_path_obj.exists():
+        if Path(model_path).exists():
             print(
                 f"Best model {model_type} found for {data_type}_{file_size} with {num_users} at {model_path}."
             )
@@ -118,8 +113,8 @@ def main():
                 model = load_pickle_artifact(model_path)
             else:
                 print("Deleting existing model artifact and retraining.")
-                model_path_obj.unlink()
-                best_params_path_obj.unlink()
+                Path(model_path).unlink()
+                Path(best_params_path).unlink()
                 cv_results_save_path = get_cv_results_path(
                     data_type, file_size, num_users, model_type
                 )
@@ -127,7 +122,7 @@ def main():
                 if cv_results_path_obj.exists():
                     cv_results_path_obj.unlink()
 
-        if not model_path_obj.exists():  # either never existed, or just deleted above
+        if not Path(model_path).exists():  # either never existed, or just deleted above
             print(
                 f"No {model_type} found for {data_type}_{file_size} with {num_users} sampled users. Starting hyperparameter tuning."
             )
@@ -145,10 +140,7 @@ def main():
 
     else:
         model = None
-    userToExpDistribution = {
-        user: expon(scale=row["median_timestamp_diff"])
-        for user, row in timestamp_distribution.iterrows()
-    }
+
     base_artifacts_path = (
         Path(RESULTS_PATH)
         / f"{data_type}_{file_size}"
@@ -166,7 +158,7 @@ def main():
         user_timestamp_distribution=userToExpDistribution,
         bootstrapped_df=bootstrapped_df,
         base_artifacts_path=base_artifacts_path,
-        config=config
+        config=config,
     )
     simulated_df, maces, divergences, maps, coverages, mrrs, ginis, diversities = (
         sim.simulate(L=num_rounds_per_eval, rounds=rounds, k=20)

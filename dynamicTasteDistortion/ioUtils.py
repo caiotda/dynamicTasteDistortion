@@ -25,6 +25,26 @@ import pickle
 
 import yaml
 
+def get_model_and_params_paths(config):
+        """
+        Extract model and params paths from config.
+        
+        Args:
+            config: Configuration dictionary containing data_type, file_size, 
+                    num_users, and model_type keys.
+        
+        Returns:
+            tuple: (model_path, best_params_path) as strs.
+        """
+        data_type = config["data_type"]
+        file_size = config["file_size"]
+        num_users = config["num_users"]
+        model_type = config["model_type"]
+        
+        model_path = get_model_path(data_type, file_size, num_users, model_type)
+        best_params_path = get_best_params_path(data_type, file_size, num_users, model_type)
+        
+        return model_path, best_params_path
 
 def read_experiment(exp_file):
     with open(exp_file, "r") as f:
@@ -137,10 +157,12 @@ def read_metrics(cfg_file, should_remove_outliers=False):
         diversities = remove_outliers(diversities)
     return maces, divergences, map_k, catalog_coverage, mrr, gini, diversities
 
-
-def load_bootstrapped_clicks(data_type, size, num_users):
+def load_bootstrapped_clicks(cfg):
+    data_type = cfg["data_type"]
+    file_size = cfg["file_size"]
+    num_users = cfg["num_users"]
     output_path = (
-        f"{SIMULATION_PATH}/{data_type}_{size}_n_users={num_users}_bootstrapped.pkl"
+        f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_bootstrapped.pkl"
     )
     with open(output_path, "rb") as f:
         bootstrapped_clicks = pickle.load(f)
@@ -158,35 +180,41 @@ def save_pickle_artifact(artifact, path):
         pickle.dump(artifact, f)
 
 
-def get_base_model_path(data_type, file_size, num_users, model_type):
+def get_base_model_path(cfg):
+    data_type = cfg["data_type"]
+    file_size = cfg["file_size"]
+    num_users = cfg["num_users"]
+    model_type = cfg["model_type"]
     return f"{MODEL_ARTIFACTS_PATH}/{model_type}_{data_type}_{file_size}_n_users={num_users}"
 
 
-def get_model_path(data_type, file_size, num_users, model_type):
-    base_path = get_base_model_path(data_type, file_size, num_users, model_type)
-    str_path = f"{base_path}_model.pkl"
-    return str_path
+def get_model_path(cfg):
+    base_path = get_base_model_path(cfg)
+    return f"{base_path}_model.pkl"
 
 
-def get_best_params_path(data_type, file_size, num_users, model_type):
-    base_path = get_base_model_path(data_type, file_size, num_users, model_type)
-    str_path = f"{base_path}_params.pkl"
-    return str_path
+def get_best_params_path(cfg):
+    base_path = get_base_model_path(cfg)
+    return f"{base_path}_params.pkl"
 
 
-def get_cv_results_path(data_type, file_size, num_users, model_type):
-    base_path = get_base_model_path(data_type, file_size, num_users, model_type)
-    str_path = f"{base_path}_cv_results.csv"
-    return str_path
+def get_cv_results_path(cfg):
+    base_path = get_base_model_path(cfg)
+    return f"{base_path}_cv_results.csv"
 
 
-def get_oracle_matrix_path(data_type, file_size, num_users):
+def get_oracle_matrix_path(cfg):
+    data_type = cfg["data_type"]
+    file_size = cfg["file_size"]
+    num_users = cfg["num_users"]
     return f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_oracle.pkl"
 
 
-def get_timestamp_behavior_path(data_type, file_size, num_users):
+def get_timestamp_behavior_path(cfg):
+    data_type = cfg["data_type"]
+    file_size = cfg["file_size"]
+    num_users = cfg["num_users"]
     return f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}_n_users={num_users}_avg_time_diff.csv"
-
 
 def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
     num_users = len(users)
