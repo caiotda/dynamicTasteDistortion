@@ -19,6 +19,7 @@ from dynamicTasteDistortion.ioUtils import (
     load_pickle_artifact,
     get_cv_results_path,
     save_pickle_artifact,
+    extract_experiment_configuration
 )
 
 from dynamicTasteDistortion.dataset_loader import load_df, input_size_to_sample_size
@@ -50,33 +51,18 @@ def main():
     with open(args.exp_file, "r") as f:
         cfg = yaml.safe_load(f)
 
-    model_type = cfg.get("model", "bpr")
-    data_type = cfg["data"]
-    size = cfg["size"]
-    file_size = input_size_to_file_name[size]
-    n_examination_trials = int(cfg.get("examination_attempts", 3))
 
-    exp_name = cfg.get("exp_name", "default_experiment")
-    calibration_type = cfg.get("calibrate", None)
-    calibration_type = (
-        str.lower(calibration_type) if calibration_type is not None else None
-    )
-    assert calibration_type in [
-        None,
-        "rating",
-        "constant",
-        "linear_time",
-        "exponential_time",
-    ], "Invalid calibration type specified in config."
-
-    rounds = int(cfg["rounds"])
-    num_rounds_per_eval = int(cfg["num_rounds_per_eval"])
-    num_users = int(cfg["num_users"])
-    model_params = cfg.get("params", None)
-    overwrite_model_selection = True if model_params is not None else False
-
-    preference_update_rate = float(cfg.get("preference_update_rate", 0))
-    compare_to_h_0 = True if cfg.get("compare_to_h_0", "y") == "y" else False
+    config = extract_experiment_configuration(cfg)
+    model_type = config["model_type"]
+    data_type = config["data_type"]
+    size = config["size"]
+    file_size = config["file_size"]
+    exp_name = config["exp_name"]
+    rounds = config["rounds"]
+    num_rounds_per_eval = config["num_rounds_per_eval"]
+    num_users = config["num_users"]
+    model_params = config["model_params"]
+    overwrite_model_selection = config["overwrite_model_selection"]
 
     timestamp_distribution = pd.read_csv(
         get_timestamp_behavior_path(data_type, file_size, num_users)
@@ -180,10 +166,7 @@ def main():
         user_timestamp_distribution=userToExpDistribution,
         bootstrapped_df=bootstrapped_df,
         base_artifacts_path=base_artifacts_path,
-        calibration_type=calibration_type,
-        preference_update_rate=preference_update_rate,
-        compare_to_h_0=compare_to_h_0,
-        n_examination_trials=n_examination_trials
+        config=config
     )
     simulated_df, maces, divergences, maps, coverages, mrrs, ginis, diversities = (
         sim.simulate(L=num_rounds_per_eval, rounds=rounds, k=20)

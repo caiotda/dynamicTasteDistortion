@@ -31,6 +31,52 @@ def read_experiment(exp_file):
         cfg = yaml.safe_load(f)
     return cfg
 
+def extract_experiment_configuration(cfg):
+        model_type = cfg.get("model", "bpr")
+        data_type = cfg["data"]
+        size = cfg["size"]
+        file_size = input_size_to_file_name[size]
+        n_examination_trials = int(cfg.get("examination_attempts", 3))
+
+        exp_name = cfg.get("exp_name", "default_experiment")
+        calibration_type = cfg.get("calibrate", None)
+        calibration_type = (
+            str.lower(calibration_type) if calibration_type is not None else None
+        )
+        assert calibration_type in [
+            None,
+            "rating",
+            "constant",
+            "linear_time",
+            "exponential_time",
+        ], "Invalid calibration type specified in config."
+
+        rounds = int(cfg["rounds"])
+        num_rounds_per_eval = int(cfg["num_rounds_per_eval"])
+        num_users = int(cfg["num_users"])
+        model_params = cfg.get("params", None)
+        overwrite_model_selection = True if model_params is not None else False
+
+        preference_update_rate = float(cfg.get("preference_update_rate", 0))
+        compare_to_h_0 = True if cfg.get("compare_to_h_0", "y") == "y" else False
+
+        return {
+            "model_type": model_type,
+            "data_type": data_type,
+            "size": size,
+            "file_size": file_size,
+            "n_examination_trials": n_examination_trials,
+            "exp_name": exp_name,
+            "calibration_type": calibration_type,
+            "rounds": rounds,
+            "num_rounds_per_eval": num_rounds_per_eval,
+            "num_users": num_users,
+            "model_params": model_params,
+            "overwrite_model_selection": overwrite_model_selection,
+            "preference_update_rate": preference_update_rate,
+            "compare_to_h_0": compare_to_h_0,
+        }
+
 
 def read_metrics(cfg_file, should_remove_outliers=False):
     data_type = cfg_file["data"]
