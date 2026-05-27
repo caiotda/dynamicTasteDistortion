@@ -94,7 +94,7 @@ class Simulator:
         self.n_examination_trials = config["n_examination_trials"]
         self.rounds = config["rounds"]
         self.num_rounds_per_eval = config["num_rounds_per_eval"]
-        
+
         self.device = (
             model.device
             if model is not None
@@ -178,7 +178,6 @@ class Simulator:
         # And depends on the genre affinity between the user and the item.
         self.forgetting_probability = torch.ones_like(self.interaction_recency_matrix)
         self.genre_affinity = torch.zeros(self.n_users, n_genres, device=self.device)
-
 
     def update_user_model(self, predictions, feedback_matrix, users_ids, clicked_items):
         """

@@ -36,7 +36,6 @@ def main():
 
     config = extract_experiment_configuration(cfg)
 
-
     timestamp_distribution = pd.read_csv(get_timestamp_behavior_path(config))
     userToExpDistribution = {
         user: expon(scale=row["median_timestamp_diff"])
