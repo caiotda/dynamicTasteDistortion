@@ -47,13 +47,8 @@ def get_model_and_params_paths(config):
         Returns:
             tuple: (model_path, best_params_path) as strs.
         """
-        data_type = config["data_type"]
-        file_size = config["file_size"]
-        num_users = config["num_users"]
-        model_type = config["model_type"]
-        
-        model_path = get_model_path(data_type, file_size, num_users, model_type)
-        best_params_path = get_best_params_path(data_type, file_size, num_users, model_type)
+        model_path = get_model_path(config)
+        best_params_path = get_best_params_path(config)
         
         return model_path, best_params_path
 
@@ -255,7 +250,7 @@ def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
 
 
 def instantiate_model(config, hyperparameter_tuning_df):
-    
+
     model_type_to_class = {"bpr": bprMFWithClickDebiasing, "bpr_classic": bprMf}
     overwrite_model_selection = config["overwrite_model_selection"]
     model_params = config["model_params"]
@@ -336,6 +331,26 @@ def instantiate_model(config, hyperparameter_tuning_df):
 
     return model
 
+def get_experiment_artifacts_path(config):
+    data_type = config["data_type"]
+    size = config["size"]
+    file_size = input_size_to_sample_size[size]
+    exp_name = config["exp_name"]
+    rounds = config["rounds"]
+    num_rounds_per_eval = config["num_rounds_per_eval"]
+    num_users = config["num_users"]
+    
+    base_artifacts_path = (
+        Path(RESULTS_PATH)
+        / f"{data_type}_{file_size}"
+        / "simulated"
+        / f"exp={exp_name}"
+        / f"rounds={rounds}"
+        / f"users={num_users}"
+        / f"eval_every={num_rounds_per_eval}"
+    )
+
+    return base_artifacts_path
 
 def get_or_create_oracle_model_artifacts(df, data_type, size):
     oracle_model_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}_{size}/oracle_model.pkl"

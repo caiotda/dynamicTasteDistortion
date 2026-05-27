@@ -62,7 +62,6 @@ class Simulator:
         user_timestamp_distribution,
         config,
         initial_date=TS_NOW,
-        base_artifacts_path=None,
         num_interactions_bootstrapped=1_000_000,
         bootstrapped_df=None,
     ):
@@ -84,8 +83,6 @@ class Simulator:
             - n_examination_trials (int): Number of examination trials for user feedback simulation.
         initial_date : datetime, optional
             Starting date for the simulation. Defaults to current timestamp.
-        base_artifacts_path : str, optional
-            Directory path for storing simulation artifacts.
         num_interactions_bootstrapped : int, default=1_000_000
             Number of interactions to bootstrap if no bootstrapped data provided.
         bootstrapped_df : pd.DataFrame, optional
@@ -95,6 +92,8 @@ class Simulator:
         self.calibration_type = config["calibration_type"]
         self.preference_update_rate = config["preference_update_rate"]
         self.n_examination_trials = config["n_examination_trials"]
+        self.rounds = config["rounds"]
+        self.num_rounds_per_eval = config["num_rounds_per_eval"]
         
         self.device = (
             model.device
@@ -143,6 +142,7 @@ class Simulator:
 
         # Check if we have a bootstrapped set of clicks set; if not, we run the bootstrapping
         # process.
+        # TODO: move to client?
         if (bootstrapped_df is not None) and (not bootstrapped_df.empty):
             self.click_matrix = bootstrapped_df
         else:
@@ -179,9 +179,6 @@ class Simulator:
         self.forgetting_probability = torch.ones_like(self.interaction_recency_matrix)
         self.genre_affinity = torch.zeros(self.n_users, n_genres, device=self.device)
 
-        # Basic persistent configurations
-        if base_artifacts_path is not None and not os.path.exists(base_artifacts_path):
-            os.makedirs(base_artifacts_path)
 
     def update_user_model(self, predictions, feedback_matrix, users_ids, clicked_items):
         """
@@ -386,7 +383,7 @@ class Simulator:
         mask[user_idx, item_idx] = -1.0
         return mask
 
-    def simulate(self, k=100, L=10, rounds=10_000):
+    def simulate(self, k=100):
         """
         Simulates a dynamic recommendation setting.
 
@@ -441,7 +438,7 @@ class Simulator:
         print("Done!")
 
         catalog_items = self.items.tolist()
-        for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
+        for round_idx in tqdm(range(1, self.rounds + 1), desc="Processing rounds..."):
             # We avoid recommending repeated items in the same interaction.
             rec, score = self._recommend(users_history=H_0, k=k, mask=mask)
 
@@ -501,8 +498,8 @@ class Simulator:
             mrrs.append(0.1)
             ginis.append(gini)
             diversities.append(ils)
-
-            if round_idx % L == 0:
+            # self.num_rounds_per_eval = L
+            if round_idx % self.num_rounds_per_eval == 0:
                 # Clicks that happened during the last L rounds are added to the rolling training dataset
                 bootstrapped_df = concat_dfs(bootstrapped_df, round_interactions)
                 round_interactions = pd.DataFrame({}, columns=bootstrapped_df.columns)

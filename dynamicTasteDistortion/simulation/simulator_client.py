@@ -1,4 +1,5 @@
 import argparse
+import os
 import pandas as pd
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from dynamicTasteDistortion.simulationConstants import (
 from dynamicTasteDistortion.simulation.simulator import Simulator
 
 from dynamicTasteDistortion.ioUtils import (
+    get_experiment_artifacts_path,
     get_oracle_matrix_path,
     get_timestamp_behavior_path,
     instantiate_model,
@@ -17,12 +19,9 @@ from dynamicTasteDistortion.ioUtils import (
     extract_experiment_configuration,
 )
 
-from dynamicTasteDistortion.dataset_loader import input_size_to_sample_size
-
 from scipy.stats import expon
 
 
-from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 import yaml
 
 
@@ -52,38 +51,22 @@ def main():
 
     model = instantiate_model(config, hyperparameter_tuning_df=bootstrapped_df)
 
-    data_type = config["data_type"]
-    size = config["size"]
-    file_size = input_size_to_sample_size[size]
-    exp_name = config["exp_name"]
-    rounds = config["rounds"]
-    num_rounds_per_eval = config["num_rounds_per_eval"]
-    num_users = config["num_users"]
-    
-    base_artifacts_path = (
-        Path(RESULTS_PATH)
-        / f"{data_type}_{file_size}"
-        / "simulated"
-        / f"exp={exp_name}"
-        / f"rounds={rounds}"
-        / f"users={num_users}"
-        / f"eval_every={num_rounds_per_eval}"
-    )
-
     sim = Simulator(
         oracle_matrix=oracle_matrix,
         model=model,
         initial_date=0.0,
         user_timestamp_distribution=userToExpDistribution,
         bootstrapped_df=bootstrapped_df,
-        base_artifacts_path=base_artifacts_path,
         config=config,
     )
     simulated_df, maces, divergences, maps, coverages, mrrs, ginis, diversities = (
-        sim.simulate(L=num_rounds_per_eval, rounds=rounds, k=20)
+        sim.simulate(k=20)
     )
 
     print(f"Done! Saving simulated interactions...")
+    base_artifacts_path = get_experiment_artifacts_path(config)
+    if base_artifacts_path is not None and not os.path.exists(base_artifacts_path):
+        os.makedirs(base_artifacts_path)
     simulated_df.to_pickle(base_artifacts_path / "simulated_interactions.pkl")
 
     save_pickle_artifact(maces, f"{base_artifacts_path}/maces.pkl")
