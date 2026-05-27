@@ -1,11 +1,7 @@
 import argparse
 import os
 import pandas as pd
-from pathlib import Path
 
-from dynamicTasteDistortion.simulationConstants import (
-    RESULTS_PATH,
-)
 from dynamicTasteDistortion.simulation.simulator import Simulator
 
 from dynamicTasteDistortion.ioUtils import (
