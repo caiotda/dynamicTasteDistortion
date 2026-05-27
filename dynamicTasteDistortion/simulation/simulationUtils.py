@@ -4,8 +4,7 @@ from dynamicTasteDistortion.simulationConstants import USER_COL, ITEM_COL
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-seed = 42
-torch.manual_seed(seed)
+
 
 
 def update_genre_affinity_tensor(
