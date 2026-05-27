@@ -53,21 +53,17 @@ from tqdm import tqdm
 
 TS_NOW = pd.Timestamp.now().timestamp()
 
+
 class Simulator:
     def __init__(
-
         self,
         oracle_matrix,
         model,
         user_timestamp_distribution,
+        config,
         initial_date=TS_NOW,
-        base_artifacts_path=None,
         num_interactions_bootstrapped=1_000_000,
         bootstrapped_df=None,
-        calibration_type=None,
-        preference_update_rate=0,
-        compare_to_h_0=True,
-        n_examination_trials=3
     ):
         """
         Initialize a Simulator instance for dynamic taste distortion simulation.
@@ -76,27 +72,29 @@ class Simulator:
         ----------
         oracle_matrix : pd.DataFrame
             Ground truth interaction matrix containing user-item interactions and metadata.
-        calibration_type : str, optional
-            Type of calibration to apply during simulation.
-        user_timestamp_distribution : dict
-            Maps user IDs to their timestamp delta probability distributions.
         model : torch.nn.Module, optional
             Recommendation model. If None, uses random recommendations.
+        user_timestamp_distribution : dict
+            Maps user IDs to their timestamp delta probability distributions.
+        config : dict
+            Configuration dictionary containing simulation parameters:
+            - calibration_type (str): Type of calibration to apply during simulation.
+            - preference_update_rate (float): Probability of acquiring new preferences from examined but unclicked items.
+            - n_examination_trials (int): Number of examination trials for user feedback simulation.
         initial_date : datetime, optional
             Starting date for the simulation. Defaults to current timestamp.
-        base_artifacts_path : str, optional
-            Directory path for storing simulation artifacts.
         num_interactions_bootstrapped : int, default=1_000_000
             Number of interactions to bootstrap if no bootstrapped data provided.
         bootstrapped_df : pd.DataFrame, optional
             Pre-computed bootstrapped click interactions. If None, bootstraps from oracle matrix.
-        preference_update_rate : float, default=0
-            Probability of acquiring new preferences from examined but unclicked items.
-        compare_to_h_0 : bool, default=True
-            Whether to compare simulation results against bootstrapped clicks, or to
-            perform a sort of sliding window comparison between current recommendation and
-            last L clicks.
         """
+
+        self.calibration_type = config["calibration_type"]
+        self.preference_update_rate = config["preference_update_rate"]
+        self.n_examination_trials = config["n_examination_trials"]
+        self.rounds = config["rounds"]
+        self.num_rounds_per_eval = config["num_rounds_per_eval"]
+
         self.device = (
             model.device
             if model is not None
@@ -104,15 +102,8 @@ class Simulator:
         )
         print(f"Default device for torch operations: {self.device}")
         self.dist_function = "hellinger"
-        # Probability of acquiring new preferences from examined, but unclicked items
-        self.preference_update_rate = preference_update_rate
-        self.compare_to_h0 = compare_to_h_0
         self.top_k_for_evaluation = 10
-        self.calibration_type = calibration_type
-        # Maps each user_id to their average timestamp between interactions probability
-        # distribution. Timestamps deltas are sampled from it.
         self.timestamp_distribution = user_timestamp_distribution
-        self.n_examination_trials = n_examination_trials
         self.user_idx_to_id = {
             idx: user_id
             for idx, user_id in enumerate(self.timestamp_distribution.keys())
@@ -149,9 +140,9 @@ class Simulator:
             list(filtered_oracle_matrix[ITEM_COL].drop_duplicates()), device=self.device
         )
 
-
         # Check if we have a bootstrapped set of clicks set; if not, we run the bootstrapping
         # process.
+        # TODO: move to client?
         if (bootstrapped_df is not None) and (not bootstrapped_df.empty):
             self.click_matrix = bootstrapped_df
         else:
@@ -168,7 +159,9 @@ class Simulator:
         self.click_matrix = preprocess_dataframe_for_calibration(self.click_matrix)
         # Genre distribution per item.
 
-        filtered_oracle_matrix[GENRES_COL] = filtered_oracle_matrix[GENRES_COL].apply(tuple)
+        filtered_oracle_matrix[GENRES_COL] = filtered_oracle_matrix[GENRES_COL].apply(
+            tuple
+        )
         self.p_g_i = build_item_genre_distribution_tensor(
             filtered_oracle_matrix, self.n_items
         )
@@ -185,10 +178,6 @@ class Simulator:
         # And depends on the genre affinity between the user and the item.
         self.forgetting_probability = torch.ones_like(self.interaction_recency_matrix)
         self.genre_affinity = torch.zeros(self.n_users, n_genres, device=self.device)
-
-        # Basic persistent configurations
-        if base_artifacts_path is not None and not os.path.exists(base_artifacts_path):
-            os.makedirs(base_artifacts_path)
 
     def update_user_model(self, predictions, feedback_matrix, users_ids, clicked_items):
         """
@@ -221,7 +210,6 @@ class Simulator:
             self.interaction_recency_matrix, G
         )
 
-
     def simulate_user_feedback(self, rec, score, from_bootstrap=False):
         """
         Simulates user feedback for a batch of recommendations.
@@ -238,7 +226,9 @@ class Simulator:
                 user, item, rating (score). One row per (user, item) pair.
         """
         should_update_user_model = not from_bootstrap
-        feedback_matrix = get_user_feedback_from_predictions(self.oracle_tensor, rec, self.n_examination_trials)
+        feedback_matrix = get_user_feedback_from_predictions(
+            self.oracle_tensor, rec, self.n_examination_trials
+        )
         # We retrieve only clicked interactions, flagged as 1
         indices = torch.nonzero(feedback_matrix == 1, as_tuple=False)
         users_indices, click_positions = indices[:, 0].tolist(), indices[:, 1].tolist()
@@ -291,11 +281,10 @@ class Simulator:
 
         interaction_df = interaction_df[interaction_df["relevant"] == 1.0]
 
-
         # Keep only the top_k_for_evaluation in rec_df
 
-        rec_filtered = rec[:self.top_k_for_evaluation]
-        score_filtered = score[:self.top_k_for_evaluation]
+        rec_filtered = rec[: self.top_k_for_evaluation]
+        score_filtered = score[: self.top_k_for_evaluation]
         n_users = rec_filtered.shape[0]
         k = rec_filtered.shape[1]
         rec_df = pd.DataFrame(
@@ -393,7 +382,7 @@ class Simulator:
         mask[user_idx, item_idx] = -1.0
         return mask
 
-    def simulate(self, k=100, L=10, rounds=10_000):
+    def simulate(self, k=100):
         """
         Simulates a dynamic recommendation setting.
 
@@ -448,7 +437,7 @@ class Simulator:
         print("Done!")
 
         catalog_items = self.items.tolist()
-        for round_idx in tqdm(range(1, rounds + 1), desc="Processing rounds..."):
+        for round_idx in tqdm(range(1, self.rounds + 1), desc="Processing rounds..."):
             # We avoid recommending repeated items in the same interaction.
             rec, score = self._recommend(users_history=H_0, k=k, mask=mask)
 
@@ -500,29 +489,31 @@ class Simulator:
 
             coverages.append(coverage)
             # TODO: remover MAP e mace
-            maps.append(0.1) #TODO: 0.1 pra não quebrar alguma media la pra frente etc.
+            maps.append(
+                0.1
+            )  # TODO: 0.1 pra não quebrar alguma media la pra frente etc.
             divergences.append(iteration_avg_divergence)
             maces.append(iteration_mace)
             mrrs.append(0.1)
             ginis.append(gini)
             diversities.append(ils)
-
-            if round_idx % L == 0:
+            # self.num_rounds_per_eval = L
+            if round_idx % self.num_rounds_per_eval == 0:
                 # Clicks that happened during the last L rounds are added to the rolling training dataset
                 bootstrapped_df = concat_dfs(bootstrapped_df, round_interactions)
                 round_interactions = pd.DataFrame({}, columns=bootstrapped_df.columns)
-                if not self.compare_to_h0:
-                    user_history_tensor = build_user_genre_history_distribution(
-                        bootstrapped_df,
-                        self.p_g_i,
-                        n_users=self.n_users,
-                        n_items=self.n_items,
-                        weight_col=(
-                            "constant"
-                            if self.calibration_type is None
-                            else self.calibration_type
-                        ),
-                    )
+                # if not self.compare_to_h0:
+                #     user_history_tensor = build_user_genre_history_distribution(
+                #         bootstrapped_df,
+                #         self.p_g_i,
+                #         n_users=self.n_users,
+                #         n_items=self.n_items,
+                #         weight_col=(
+                #             "constant"
+                #             if self.calibration_type is None
+                #             else self.calibration_type
+                #         ),
+                #     )
                 if not self.use_random_rec:
                     print("retraining model...")
                     self.model = copy.deepcopy(initial_model)

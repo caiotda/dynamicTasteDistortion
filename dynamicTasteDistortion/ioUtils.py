@@ -1,8 +1,11 @@
-import ast
+import torch
+
 from dynamicTasteDistortion.scripts.metrics_utils import remove_outliers
 from dynamicTasteDistortion.scripts.model_utils import (
     choose_best_model,
 )
+from dynamicTasteDistortion.dataset_loader import load_df, input_size_to_sample_size
+
 
 from dynamicTasteDistortion.scripts.bootstrapping_utils import (
     fill_out_matrix,
@@ -15,6 +18,14 @@ from dynamicTasteDistortion.simulationConstants import (
     input_size_to_file_name,
 )
 
+from dynamicTasteDistortion.scripts.model_utils import (
+    HyperParameterTuner,
+    MostPopularRecommender,
+)
+
+from bprMf.bpr_mf import bprMFWithClickDebiasing, bprMf
+
+
 from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 
 import os
@@ -25,11 +36,72 @@ import pickle
 
 import yaml
 
+def get_model_and_params_paths(config):
+        """
+        Extract model and params paths from config.
+        
+        Args:
+            config: Configuration dictionary containing data_type, file_size, 
+                    num_users, and model_type keys.
+        
+        Returns:
+            tuple: (model_path, best_params_path) as strs.
+        """
+        model_path = get_model_path(config)
+        best_params_path = get_best_params_path(config)
+        
+        return model_path, best_params_path
 
 def read_experiment(exp_file):
     with open(exp_file, "r") as f:
         cfg = yaml.safe_load(f)
     return cfg
+
+def extract_experiment_configuration(cfg):
+        model_type = cfg.get("model", "bpr")
+        data_type = cfg["data"]
+        size = cfg["size"]
+        file_size = input_size_to_file_name[size]
+        n_examination_trials = int(cfg.get("examination_attempts", 3))
+
+        exp_name = cfg.get("exp_name", "default_experiment")
+        calibration_type = cfg.get("calibrate", None)
+        calibration_type = (
+            str.lower(calibration_type) if calibration_type is not None else None
+        )
+        assert calibration_type in [
+            None,
+            "rating",
+            "constant",
+            "linear_time",
+            "exponential_time",
+        ], "Invalid calibration type specified in config."
+
+        rounds = int(cfg["rounds"])
+        num_rounds_per_eval = int(cfg["num_rounds_per_eval"])
+        num_users = int(cfg["num_users"])
+        model_params = cfg.get("params", None)
+        overwrite_model_selection = True if model_params is not None else False
+
+        preference_update_rate = float(cfg.get("preference_update_rate", 0))
+        compare_to_h_0 = True if cfg.get("compare_to_h_0", "y") == "y" else False
+
+        return {
+            "model_type": model_type,
+            "data_type": data_type,
+            "size": size,
+            "file_size": file_size,
+            "n_examination_trials": n_examination_trials,
+            "exp_name": exp_name,
+            "calibration_type": calibration_type,
+            "rounds": rounds,
+            "num_rounds_per_eval": num_rounds_per_eval,
+            "num_users": num_users,
+            "model_params": model_params,
+            "overwrite_model_selection": overwrite_model_selection,
+            "preference_update_rate": preference_update_rate,
+            "compare_to_h_0": compare_to_h_0,
+        }
 
 
 def read_metrics(cfg_file, should_remove_outliers=False):
@@ -91,10 +163,12 @@ def read_metrics(cfg_file, should_remove_outliers=False):
         diversities = remove_outliers(diversities)
     return maces, divergences, map_k, catalog_coverage, mrr, gini, diversities
 
-
-def load_bootstrapped_clicks(data_type, size, num_users):
+def load_bootstrapped_clicks(cfg):
+    data_type = cfg["data_type"]
+    file_size = cfg["file_size"]
+    num_users = cfg["num_users"]
     output_path = (
-        f"{SIMULATION_PATH}/{data_type}_{size}_n_users={num_users}_bootstrapped.pkl"
+        f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_bootstrapped.pkl"
     )
     with open(output_path, "rb") as f:
         bootstrapped_clicks = pickle.load(f)
@@ -112,35 +186,41 @@ def save_pickle_artifact(artifact, path):
         pickle.dump(artifact, f)
 
 
-def get_base_model_path(data_type, file_size, num_users, model_type):
+def get_base_model_path(cfg):
+    data_type = cfg["data_type"]
+    file_size = cfg["file_size"]
+    num_users = cfg["num_users"]
+    model_type = cfg["model_type"]
     return f"{MODEL_ARTIFACTS_PATH}/{model_type}_{data_type}_{file_size}_n_users={num_users}"
 
 
-def get_model_path(data_type, file_size, num_users, model_type):
-    base_path = get_base_model_path(data_type, file_size, num_users, model_type)
-    str_path = f"{base_path}_model.pkl"
-    return str_path
+def get_model_path(cfg):
+    base_path = get_base_model_path(cfg)
+    return f"{base_path}_model.pkl"
 
 
-def get_best_params_path(data_type, file_size, num_users, model_type):
-    base_path = get_base_model_path(data_type, file_size, num_users, model_type)
-    str_path = f"{base_path}_params.pkl"
-    return str_path
+def get_best_params_path(cfg):
+    base_path = get_base_model_path(cfg)
+    return f"{base_path}_params.pkl"
 
 
-def get_cv_results_path(data_type, file_size, num_users, model_type):
-    base_path = get_base_model_path(data_type, file_size, num_users, model_type)
-    str_path = f"{base_path}_cv_results.csv"
-    return str_path
+def get_cv_results_path(cfg):
+    base_path = get_base_model_path(cfg)
+    return f"{base_path}_cv_results.csv"
 
 
-def get_oracle_matrix_path(data_type, file_size, num_users):
+def get_oracle_matrix_path(cfg):
+    data_type = cfg["data_type"]
+    file_size = cfg["file_size"]
+    num_users = cfg["num_users"]
     return f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_oracle.pkl"
 
 
-def get_timestamp_behavior_path(data_type, file_size, num_users):
+def get_timestamp_behavior_path(cfg):
+    data_type = cfg["data_type"]
+    file_size = cfg["file_size"]
+    num_users = cfg["num_users"]
     return f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}_n_users={num_users}_avg_time_diff.csv"
-
 
 def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
     num_users = len(users)
@@ -168,6 +248,109 @@ def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
     filled_oracle_matrix.to_pickle(oracle_output_path)
     return filled_oracle_matrix
 
+
+def instantiate_model(config, hyperparameter_tuning_df):
+
+    model_type_to_class = {"bpr": bprMFWithClickDebiasing, "bpr_classic": bprMf}
+    overwrite_model_selection = config["overwrite_model_selection"]
+    model_params = config["model_params"]
+    model_type = config["model_type"]
+    data_type = config["data_type"]
+    overwrite_model_selection = config["overwrite_model_selection"]
+    size = config["size"]
+    num_users = config["num_users"]
+    file_size = input_size_to_sample_size[size]
+
+    n_users = hyperparameter_tuning_df.user.max() + 1
+    n_items = hyperparameter_tuning_df.item.max() + 1
+
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+
+    model_path, best_params_path = get_model_and_params_paths(config)
+
+    if overwrite_model_selection:
+        if model_type not in ("bpr", "bpr_classic"):
+            raise ValueError(
+                "overwrite_model_selection is not supported for most_popular or random model."
+            )
+        ModelClass = model_type_to_class[model_type]
+        print(f"Using predefined best params: {model_params}")
+        model = ModelClass(
+            num_users=n_users, num_items=n_items, dev=dev, **model_params
+        )
+
+    elif model_type == "most_popular":
+        print(f"Loading {data_type}_{file_size} dataset to fit Most Popular model...")
+        sample_size = size if data_type == "ml" else file_size
+        df = load_df(data_type, size=sample_size)
+        processed_df, _, _ = standardize_ids(df)
+        model = MostPopularRecommender(processed_df)
+
+    elif model_type in ("bpr", "bpr_classic"):
+        ModelClass = model_type_to_class[model_type]
+
+        if Path(model_path).exists():
+            print(
+                f"Best model {model_type} found for {data_type}_{file_size} with {num_users} at {model_path}."
+            )
+            print(f"Model params: {load_pickle_artifact(best_params_path)}")
+            overwrite = (
+                input("Model artifact already exists. Overwrite and retrain? [y/N]: ")
+                .strip()
+                .lower()
+            )
+
+            if overwrite in ("n", "no", ""):
+                print("Using existing model and skipping hyperparameter tuning.")
+                model = load_pickle_artifact(model_path)
+            else:
+                print("Deleting existing model artifact and retraining.")
+                Path(model_path).unlink()
+                Path(best_params_path).unlink()
+                cv_results_save_path = get_cv_results_path(config)
+                cv_results_path_obj = Path(cv_results_save_path)
+                if cv_results_path_obj.exists():
+                    cv_results_path_obj.unlink()
+
+        if not Path(model_path).exists():  # either never existed, or just deleted above
+            print(
+                f"No {model_type} found for {data_type}_{file_size} with {num_users} sampled users. Starting hyperparameter tuning."
+            )
+            tuner = HyperParameterTuner(hyperparameter_tuning_df, ModelClass)
+            model, cv_results, best_params = tuner.tune(truth_set=hyperparameter_tuning_df, k=5)
+            save_pickle_artifact(best_params, best_params_path)
+            save_pickle_artifact(model, model_path)
+            cv_results_save_path = get_cv_results_path(config)
+            cv_results.to_csv(cv_results_save_path)
+            model = ModelClass(
+                num_users=n_users, num_items=n_items, dev=dev, **best_params
+            )
+
+    else:
+        model = None
+
+    return model
+
+def get_experiment_artifacts_path(config):
+    data_type = config["data_type"]
+    size = config["size"]
+    file_size = input_size_to_sample_size[size]
+    exp_name = config["exp_name"]
+    rounds = config["rounds"]
+    num_rounds_per_eval = config["num_rounds_per_eval"]
+    num_users = config["num_users"]
+    
+    base_artifacts_path = (
+        Path(RESULTS_PATH)
+        / f"{data_type}_{file_size}"
+        / "simulated"
+        / f"exp={exp_name}"
+        / f"rounds={rounds}"
+        / f"users={num_users}"
+        / f"eval_every={num_rounds_per_eval}"
+    )
+
+    return base_artifacts_path
 
 def get_or_create_oracle_model_artifacts(df, data_type, size):
     oracle_model_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}_{size}/oracle_model.pkl"
