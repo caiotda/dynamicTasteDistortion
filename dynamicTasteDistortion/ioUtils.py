@@ -84,8 +84,7 @@ def extract_experiment_configuration(cfg):
         overwrite_model_selection = True if model_params is not None else False
 
         preference_update_rate = float(cfg.get("preference_update_rate", 0))
-        compare_to_h_0 = True if cfg.get("compare_to_h_0", "y") == "y" else False
-
+        n_trials = int(cfg.get("n_trials", 1))
         return {
             "model_type": model_type,
             "data_type": data_type,
@@ -100,7 +99,7 @@ def extract_experiment_configuration(cfg):
             "model_params": model_params,
             "overwrite_model_selection": overwrite_model_selection,
             "preference_update_rate": preference_update_rate,
-            "compare_to_h_0": compare_to_h_0,
+            "n_trials": n_trials
         }
 
 
