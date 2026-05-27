@@ -485,23 +485,24 @@ class Simulator:
             # Every time an item was interacted during the last L rounds, we remove it from the next recommendation.
             mask = self._mask_previously_seen_items(round_interactions)
 
-            map_k = compute_map_at_k(
-                train_df=bootstrapped_df,
-                test_df=round_df,
-                rec=rec,
-                users=self.users,
-                top_k_for_evaluation=self.top_k_for_evaluation,
-            )
-            mrr = calculate_mmr(round_df)
+            # map_k = compute_map_at_k(
+            #     train_df=bootstrapped_df,
+            #     test_df=round_df,
+            #     rec=rec,
+            #     users=self.users,
+            #     top_k_for_evaluation=self.top_k_for_evaluation,
+            # )
+            # mrr = calculate_mmr(round_df)
             coverage = catalog_coverage(rec, catalog=self.items)
             gini = calculate_gini_index(rec, catalog=catalog_items)
             ils = diversity(rec, self.sim_lookup)
 
             coverages.append(coverage)
-            maps.append(map_k)
+            # TODO: remover MAP e mace
+            maps.append(0.1) #TODO: 0.1 pra não quebrar alguma media la pra frente etc.
             divergences.append(iteration_avg_divergence)
             maces.append(iteration_mace)
-            mrrs.append(mrr)
+            mrrs.append(0.1)
             ginis.append(gini)
             diversities.append(ils)
 
