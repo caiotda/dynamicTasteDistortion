@@ -1,40 +1,29 @@
 import argparse
 import pandas as pd
-import torch
-import pickle
 from pathlib import Path
 
 from dynamicTasteDistortion.simulationConstants import (
-    input_size_to_file_name,
     RESULTS_PATH,
 )
 from dynamicTasteDistortion.simulation.simulator import Simulator
 
 from dynamicTasteDistortion.ioUtils import (
-    get_model_and_params_paths,
     get_oracle_matrix_path,
     get_timestamp_behavior_path,
+    instantiate_model,
     load_bootstrapped_clicks,
     load_pickle_artifact,
-    get_cv_results_path,
     save_pickle_artifact,
     extract_experiment_configuration,
 )
 
-from dynamicTasteDistortion.dataset_loader import load_df, input_size_to_sample_size
-
+from dynamicTasteDistortion.dataset_loader import input_size_to_sample_size
 
 from scipy.stats import expon
 
-from bprMf.bpr_mf import bprMFWithClickDebiasing, bprMf
-from dynamicTasteDistortion.scripts.model_utils import (
-    HyperParameterTuner,
-    MostPopularRecommender,
-)
+
 from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 import yaml
-
-model_type_to_class = {"bpr": bprMFWithClickDebiasing, "bpr_classic": bprMf}
 
 
 def main():
@@ -51,16 +40,7 @@ def main():
         cfg = yaml.safe_load(f)
 
     config = extract_experiment_configuration(cfg)
-    model_type = config["model_type"]
-    data_type = config["data_type"]
-    size = config["size"]
-    file_size = config["file_size"]
-    exp_name = config["exp_name"]
-    rounds = config["rounds"]
-    num_rounds_per_eval = config["num_rounds_per_eval"]
-    num_users = config["num_users"]
-    model_params = config["model_params"]
-    overwrite_model_selection = config["overwrite_model_selection"]
+
 
     timestamp_distribution = pd.read_csv(get_timestamp_behavior_path(config))
     userToExpDistribution = {
@@ -69,78 +49,17 @@ def main():
     }
     oracle_matrix = load_pickle_artifact(get_oracle_matrix_path(config))
     bootstrapped_df = load_bootstrapped_clicks(config)
-    n_users = bootstrapped_df.user.max() + 1
-    n_items = bootstrapped_df.item.max() + 1
 
-    model_path, best_params_path = get_model_and_params_paths(config)
+    model = instantiate_model(config, hyperparameter_tuning_df=bootstrapped_df)
 
-    dev = "cuda" if torch.cuda.is_available() else "cpu"
-
-    if overwrite_model_selection:
-        if model_type not in ("bpr", "bpr_classic"):
-            raise ValueError(
-                "overwrite_model_selection is not supported for most_popular or random model."
-            )
-        ModelClass = model_type_to_class[model_type]
-        print(f"Using predefined best params: {model_params}")
-        model = ModelClass(
-            num_users=n_users, num_items=n_items, dev=dev, **model_params
-        )
-
-    elif model_type == "most_popular":
-        print(f"Loading {data_type}_{file_size} dataset to fit Most Popular model...")
-        sample_size = size if data_type == "ml" else input_size_to_sample_size[size]
-        df = load_df(data_type, size=sample_size)
-        processed_df, _, _ = standardize_ids(df)
-        model = MostPopularRecommender(processed_df)
-
-    elif model_type in ("bpr", "bpr_classic"):
-        ModelClass = model_type_to_class[model_type]
-
-        if Path(model_path).exists():
-            print(
-                f"Best model {model_type} found for {data_type}_{file_size} with {num_users} at {model_path}."
-            )
-            print(f"Model params: {load_pickle_artifact(best_params_path)}")
-            overwrite = (
-                input("Model artifact already exists. Overwrite and retrain? [y/N]: ")
-                .strip()
-                .lower()
-            )
-
-            if overwrite in ("n", "no", ""):
-                print("Using existing model and skipping hyperparameter tuning.")
-                model = load_pickle_artifact(model_path)
-            else:
-                print("Deleting existing model artifact and retraining.")
-                Path(model_path).unlink()
-                Path(best_params_path).unlink()
-                cv_results_save_path = get_cv_results_path(
-                    data_type, file_size, num_users, model_type
-                )
-                cv_results_path_obj = Path(cv_results_save_path)
-                if cv_results_path_obj.exists():
-                    cv_results_path_obj.unlink()
-
-        if not Path(model_path).exists():  # either never existed, or just deleted above
-            print(
-                f"No {model_type} found for {data_type}_{file_size} with {num_users} sampled users. Starting hyperparameter tuning."
-            )
-            tuner = HyperParameterTuner(bootstrapped_df, ModelClass)
-            model, cv_results, best_params = tuner.tune(truth_set=bootstrapped_df, k=5)
-            save_pickle_artifact(best_params, best_params_path)
-            save_pickle_artifact(model, model_path)
-            cv_results_save_path = get_cv_results_path(
-                data_type, file_size, num_users, model_type
-            )
-            cv_results.to_csv(cv_results_save_path)
-            model = ModelClass(
-                num_users=n_users, num_items=n_items, dev=dev, **best_params
-            )
-
-    else:
-        model = None
-
+    data_type = config["data_type"]
+    size = config["size"]
+    file_size = input_size_to_sample_size[size]
+    exp_name = config["exp_name"]
+    rounds = config["rounds"]
+    num_rounds_per_eval = config["num_rounds_per_eval"]
+    num_users = config["num_users"]
+    
     base_artifacts_path = (
         Path(RESULTS_PATH)
         / f"{data_type}_{file_size}"
