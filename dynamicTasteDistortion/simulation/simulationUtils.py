@@ -97,7 +97,7 @@ def update_oracle_from_hits(oracle_tensor, prediction_tensor, updated_hit_matrix
     return oracle_updated
 
 
-def simulate_user_interactions(predictions, hit_matrix):
+def simulate_user_interactions(predictions, hit_matrix, n_examination_trials):
     """
     Given a tensor of predictions from a Recommender and an oracle matrix that tells
     what item is relevant to each user, returns which item was actually clicked by the simulated
@@ -119,7 +119,7 @@ def simulate_user_interactions(predictions, hit_matrix):
             feedback_matrix[u, i] == 0: item i was not examined nor clicked.
     """
 
-    examined_matrix = click_model(predictions)
+    examined_matrix = click_model(predictions, n_examination_trials)
 
     # click_matrix[u,i] = 1 if user examined and if recommendation was a hit
     # (is relevant); 0 otherwise.
@@ -211,7 +211,7 @@ def build_interaction_timestamp_matrix(
 
     return interaction_recency_matrix
 
-def get_user_feedback_from_predictions(oracle_tensor, recommendation_tensor):
+def get_user_feedback_from_predictions(oracle_tensor, recommendation_tensor, n_examination_trials=3):
         """
         Returns which items in the recommendation tensor were interacted by the simulated users
 
@@ -230,11 +230,11 @@ def get_user_feedback_from_predictions(oracle_tensor, recommendation_tensor):
         )
 
         interaction_matrix = encode_interaction_matrix(
-            recommendation_tensor, hit_matrix
+            recommendation_tensor, hit_matrix, n_examination_trials
         )
         return interaction_matrix
 
-def encode_interaction_matrix(predictions, hit_matrix):
+def encode_interaction_matrix(predictions, hit_matrix, n_examination_trials):
     """
     Builds an interaction matrix from predictions and relevance labels.
     - 1: user clicked the item
@@ -247,7 +247,7 @@ def encode_interaction_matrix(predictions, hit_matrix):
     Returns:
         Interaction matrix (n_users, k) with values in {0, 1, nan}
     """
-    intearction_matrix_raw = simulate_user_interactions(predictions, hit_matrix)
+    intearction_matrix_raw = simulate_user_interactions(predictions, hit_matrix, n_examination_trials)
     interaction_matrix = torch.where(
         intearction_matrix_raw == 0,
         torch.tensor(float("nan"), device=intearction_matrix_raw.device),

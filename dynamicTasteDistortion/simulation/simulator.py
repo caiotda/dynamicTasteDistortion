@@ -67,6 +67,7 @@ class Simulator:
         calibration_type=None,
         preference_update_rate=0,
         compare_to_h_0=True,
+        n_examination_trials=3
     ):
         """
         Initialize a Simulator instance for dynamic taste distortion simulation.
@@ -111,7 +112,7 @@ class Simulator:
         # Maps each user_id to their average timestamp between interactions probability
         # distribution. Timestamps deltas are sampled from it.
         self.timestamp_distribution = user_timestamp_distribution
-
+        self.n_examination_trials = n_examination_trials
         self.user_idx_to_id = {
             idx: user_id
             for idx, user_id in enumerate(self.timestamp_distribution.keys())
@@ -237,7 +238,7 @@ class Simulator:
                 user, item, rating (score). One row per (user, item) pair.
         """
         should_update_user_model = not from_bootstrap
-        feedback_matrix = get_user_feedback_from_predictions(self.oracle_tensor, rec)
+        feedback_matrix = get_user_feedback_from_predictions(self.oracle_tensor, rec, self.n_examination_trials)
         # We retrieve only clicked interactions, flagged as 1
         indices = torch.nonzero(feedback_matrix == 1, as_tuple=False)
         users_indices, click_positions = indices[:, 0].tolist(), indices[:, 1].tolist()
