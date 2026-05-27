@@ -260,12 +260,14 @@ def encode_interaction_matrix(predictions, hit_matrix):
     return interaction_matrix
 
 
-def click_model(predictions):
+def click_model(predictions, n_trials=3):
     """
     Simulates a click model tensor of predictions.
 
     Args:
         predictions (torch.tensor.int): Tensor of predictions made by the model
+        N_trials (optional): we simulate users looking at the list multiple times. Each trial
+        is independent of the other.
 
     Returns:
         torch.tensor.int: Returns the positions that have been examined
@@ -275,13 +277,15 @@ def click_model(predictions):
         where higher-ranked items have a higher chance of being examined.
     """
     M, K = predictions.shape
-    # Creates a tensor of item positions in the recommendation from 0 to k,
-    # for M users.
     tensor = torch.stack([torch.arange(K, device=device)] * M).to(device)
-    # A random examination probability that each user has for each item position.
-    examination_probability = torch.rand(M, K, device=device)
-    lambda_tensor = 1 / torch.log2(tensor + 1)
-    return (lambda_tensor > examination_probability).int()
+    lambda_tensor = 1 / torch.log2(tensor + 2) 
+
+    # run n independent examination attempts
+    examination_probability = torch.rand(n_trials, M, K, device=device)
+
+    # An item is examined if ANY trial results in examination
+    examined = (lambda_tensor > examination_probability).any(dim=0).int()
+    return examined
 
 
 def calculate_preference_matrix(
