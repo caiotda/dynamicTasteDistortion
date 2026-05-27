@@ -97,7 +97,7 @@ def update_oracle_from_hits(oracle_tensor, prediction_tensor, updated_hit_matrix
     return oracle_updated
 
 
-def simulate_user_interactions(predictions, hit_matrix):
+def simulate_user_interactions(predictions, hit_matrix, n_examination_trials):
     """
     Given a tensor of predictions from a Recommender and an oracle matrix that tells
     what item is relevant to each user, returns which item was actually clicked by the simulated
@@ -119,7 +119,7 @@ def simulate_user_interactions(predictions, hit_matrix):
             feedback_matrix[u, i] == 0: item i was not examined nor clicked.
     """
 
-    examined_matrix = click_model(predictions)
+    examined_matrix = click_model(predictions, n_examination_trials)
 
     # click_matrix[u,i] = 1 if user examined and if recommendation was a hit
     # (is relevant); 0 otherwise.
@@ -211,7 +211,7 @@ def build_interaction_timestamp_matrix(
 
     return interaction_recency_matrix
 
-def get_user_feedback_from_predictions(oracle_tensor, recommendation_tensor):
+def get_user_feedback_from_predictions(oracle_tensor, recommendation_tensor, n_examination_trials=3):
         """
         Returns which items in the recommendation tensor were interacted by the simulated users
 
@@ -230,11 +230,11 @@ def get_user_feedback_from_predictions(oracle_tensor, recommendation_tensor):
         )
 
         interaction_matrix = encode_interaction_matrix(
-            recommendation_tensor, hit_matrix
+            recommendation_tensor, hit_matrix, n_examination_trials
         )
         return interaction_matrix
 
-def encode_interaction_matrix(predictions, hit_matrix):
+def encode_interaction_matrix(predictions, hit_matrix, n_examination_trials):
     """
     Builds an interaction matrix from predictions and relevance labels.
     - 1: user clicked the item
@@ -247,7 +247,7 @@ def encode_interaction_matrix(predictions, hit_matrix):
     Returns:
         Interaction matrix (n_users, k) with values in {0, 1, nan}
     """
-    intearction_matrix_raw = simulate_user_interactions(predictions, hit_matrix)
+    intearction_matrix_raw = simulate_user_interactions(predictions, hit_matrix, n_examination_trials)
     interaction_matrix = torch.where(
         intearction_matrix_raw == 0,
         torch.tensor(float("nan"), device=intearction_matrix_raw.device),
@@ -260,12 +260,14 @@ def encode_interaction_matrix(predictions, hit_matrix):
     return interaction_matrix
 
 
-def click_model(predictions):
+def click_model(predictions, n_trials=3):
     """
     Simulates a click model tensor of predictions.
 
     Args:
         predictions (torch.tensor.int): Tensor of predictions made by the model
+        N_trials (optional): we simulate users looking at the list multiple times. Each trial
+        is independent of the other.
 
     Returns:
         torch.tensor.int: Returns the positions that have been examined
@@ -275,13 +277,15 @@ def click_model(predictions):
         where higher-ranked items have a higher chance of being examined.
     """
     M, K = predictions.shape
-    # Creates a tensor of item positions in the recommendation from 0 to k,
-    # for M users.
     tensor = torch.stack([torch.arange(K, device=device)] * M).to(device)
-    # A random examination probability that each user has for each item position.
-    examination_probability = torch.rand(M, K, device=device)
-    lambda_tensor = 1 / torch.log2(tensor + 1)
-    return (lambda_tensor > examination_probability).int()
+    lambda_tensor = 1 / torch.log2(tensor + 2) 
+
+    # run n independent examination attempts
+    examination_probability = torch.rand(n_trials, M, K, device=device)
+
+    # An item is examined if ANY trial results in examination
+    examined = (lambda_tensor > examination_probability).any(dim=0).int()
+    return examined
 
 
 def calculate_preference_matrix(

@@ -54,6 +54,7 @@ def main():
     data_type = cfg["data"]
     size = cfg["size"]
     file_size = input_size_to_file_name[size]
+    n_examination_trials = int(cfg.get("examination_attempts", 3))
 
     exp_name = cfg.get("exp_name", "default_experiment")
     calibration_type = cfg.get("calibrate", None)
@@ -182,6 +183,7 @@ def main():
         calibration_type=calibration_type,
         preference_update_rate=preference_update_rate,
         compare_to_h_0=compare_to_h_0,
+        n_examination_trials=n_examination_trials
     )
     simulated_df, maces, divergences, maps, coverages, mrrs, ginis, diversities = (
         sim.simulate(L=num_rounds_per_eval, rounds=rounds, k=20)

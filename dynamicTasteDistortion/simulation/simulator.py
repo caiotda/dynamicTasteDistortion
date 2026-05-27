@@ -67,6 +67,7 @@ class Simulator:
         calibration_type=None,
         preference_update_rate=0,
         compare_to_h_0=True,
+        n_examination_trials=3
     ):
         """
         Initialize a Simulator instance for dynamic taste distortion simulation.
@@ -111,7 +112,7 @@ class Simulator:
         # Maps each user_id to their average timestamp between interactions probability
         # distribution. Timestamps deltas are sampled from it.
         self.timestamp_distribution = user_timestamp_distribution
-
+        self.n_examination_trials = n_examination_trials
         self.user_idx_to_id = {
             idx: user_id
             for idx, user_id in enumerate(self.timestamp_distribution.keys())
@@ -237,7 +238,7 @@ class Simulator:
                 user, item, rating (score). One row per (user, item) pair.
         """
         should_update_user_model = not from_bootstrap
-        feedback_matrix = get_user_feedback_from_predictions(self.oracle_tensor, rec)
+        feedback_matrix = get_user_feedback_from_predictions(self.oracle_tensor, rec, self.n_examination_trials)
         # We retrieve only clicked interactions, flagged as 1
         indices = torch.nonzero(feedback_matrix == 1, as_tuple=False)
         users_indices, click_positions = indices[:, 0].tolist(), indices[:, 1].tolist()
@@ -485,23 +486,24 @@ class Simulator:
             # Every time an item was interacted during the last L rounds, we remove it from the next recommendation.
             mask = self._mask_previously_seen_items(round_interactions)
 
-            map_k = compute_map_at_k(
-                train_df=bootstrapped_df,
-                test_df=round_df,
-                rec=rec,
-                users=self.users,
-                top_k_for_evaluation=self.top_k_for_evaluation,
-            )
-            mrr = calculate_mmr(round_df)
+            # map_k = compute_map_at_k(
+            #     train_df=bootstrapped_df,
+            #     test_df=round_df,
+            #     rec=rec,
+            #     users=self.users,
+            #     top_k_for_evaluation=self.top_k_for_evaluation,
+            # )
+            # mrr = calculate_mmr(round_df)
             coverage = catalog_coverage(rec, catalog=self.items)
             gini = calculate_gini_index(rec, catalog=catalog_items)
             ils = diversity(rec, self.sim_lookup)
 
             coverages.append(coverage)
-            maps.append(map_k)
+            # TODO: remover MAP e mace
+            maps.append(0.1) #TODO: 0.1 pra não quebrar alguma media la pra frente etc.
             divergences.append(iteration_avg_divergence)
             maces.append(iteration_mace)
-            mrrs.append(mrr)
+            mrrs.append(0.1)
             ginis.append(gini)
             diversities.append(ils)
 
