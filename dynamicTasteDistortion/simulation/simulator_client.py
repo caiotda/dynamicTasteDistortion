@@ -18,37 +18,12 @@ from dynamicTasteDistortion.ioUtils import (
     extract_experiment_configuration,
 )
 
+from dynamicTasteDistortion.simulationConstants import SEEDS
+
 from scipy.stats import expon
 
 
 import yaml
-
-# Seeds generated via random.sample(range(1000), 20)
-# Except for the first one, which we set to 42
-# to keep results comparable to a previous version of the code
-# that didn't repeat experiments several times.
-seeds = [
-    42,
-    86,
-    840,
-    394,
-    806,
-    558,
-    426,
-    768,
-    208,
-    436,
-    590,
-    98,
-    41,
-    833,
-    62,
-    472,
-    645,
-    905,
-    991,
-    698,
-]
 
 
 def main():
@@ -77,7 +52,6 @@ def main():
 
     results = {}
 
-
     for seed in tqdm(seeds[:n_trials], desc="Running trials"):
         torch.manual_seed(seed)
 
@@ -90,8 +64,8 @@ def main():
             bootstrapped_df=bootstrapped_df,
             config=config,
         )
-        simulated_df, maces, divergences, maps, coverages, mrrs, ginis, diversities = (
-            sim.simulate(k=20)
+        simulated_df, maces, divergences, coverages, ginis, diversities = sim.simulate(
+            k=20
         )
 
         base_artifacts_path = get_experiment_artifacts_path(config)
@@ -102,11 +76,9 @@ def main():
             base_artifacts_path / f"simulated_interactions_seed{seed}.pkl"
         )
         save_pickle_artifact(maces, f"{base_artifacts_path}/maces_seed{seed}.pkl")
-        save_pickle_artifact(mrrs, f"{base_artifacts_path}/mrrs_seed{seed}.pkl")
         save_pickle_artifact(
             divergences, f"{base_artifacts_path}/divergences_seed{seed}.pkl"
         )
-        save_pickle_artifact(maps, f"{base_artifacts_path}/mace_at_k_seed{seed}.pkl")
         save_pickle_artifact(
             coverages, f"{base_artifacts_path}/catalog_coverage_seed{seed}.pkl"
         )
@@ -117,9 +89,7 @@ def main():
 
         results[seed] = {
             "maces": maces,
-            "mrrs": mrrs,
             "divergences": divergences,
-            "maps": maps,
             "coverages": coverages,
             "ginis": ginis,
             "diversities": diversities,

@@ -406,8 +406,6 @@ class Simulator:
         H_0 = self.click_matrix.copy()
         maces = []
         divergences = []
-        maps = []
-        mrrs = []
         coverages = []
         ginis = []
         diversities = []
@@ -488,13 +486,8 @@ class Simulator:
             ils = diversity(rec, self.sim_lookup)
 
             coverages.append(coverage)
-            # TODO: remover MAP e mace
-            maps.append(
-                0.1
-            )  # TODO: 0.1 pra não quebrar alguma media la pra frente etc.
             divergences.append(iteration_avg_divergence)
             maces.append(iteration_mace)
-            mrrs.append(0.1)
             ginis.append(gini)
             diversities.append(ils)
             # self.num_rounds_per_eval = L
@@ -502,18 +495,6 @@ class Simulator:
                 # Clicks that happened during the last L rounds are added to the rolling training dataset
                 bootstrapped_df = concat_dfs(bootstrapped_df, round_interactions)
                 round_interactions = pd.DataFrame({}, columns=bootstrapped_df.columns)
-                # if not self.compare_to_h0:
-                #     user_history_tensor = build_user_genre_history_distribution(
-                #         bootstrapped_df,
-                #         self.p_g_i,
-                #         n_users=self.n_users,
-                #         n_items=self.n_items,
-                #         weight_col=(
-                #             "constant"
-                #             if self.calibration_type is None
-                #             else self.calibration_type
-                #         ),
-                #     )
                 if not self.use_random_rec:
                     print("retraining model...")
                     self.model = copy.deepcopy(initial_model)
@@ -524,9 +505,7 @@ class Simulator:
             bootstrapped_df,
             maces,
             divergences,
-            maps,
             coverages,
-            mrrs,
             ginis,
             diversities,
         )
