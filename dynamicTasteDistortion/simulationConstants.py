@@ -21,3 +21,30 @@ RATING_COL = "rating"
 TIMESTAMP_COL = "timestamp"
 
 REVIEWS_PER_USER_THRESHOLD = 30
+
+# Seeds generated via random.sample(range(1000), 20)
+# Except for the first one, which we set to 42
+# to keep results comparable to a previous version of the code
+# that didn't repeat experiments several times.
+SEEDS = [
+    42,
+    86,
+    840,
+    394,
+    806,
+    558,
+    426,
+    768,
+    208,
+    436,
+    590,
+    98,
+    41,
+    833,
+    62,
+    472,
+    645,
+    905,
+    991,
+    698,
+]

@@ -1,3 +1,5 @@
+import numpy as np
+
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 
@@ -6,6 +8,8 @@ from dynamicTasteDistortion.scripts.metrics_utils import (
     apply_rolling_avg,
     remove_burnin,
 )
+
+from dynamicTasteDistortion.simulationConstants import SEEDS
 
 import seaborn as sns
 
@@ -93,33 +97,35 @@ def plot_metric_comparison(
 
     if should_remove_outliers:
         title += " (Outliers Removed)"
-    metric_map = {
-        "mace": 0,
-        "diver": 1,
-        "map": 2,
-        "coverage": 3,
-        "mrr": 4,
-        "gini": 5,
-        "div": 6,
-    }
+
     metric_name_to_nice_name = {
         "mace": "Mean Average Calibration Error",
         "diver": "Average Distribution divergence",
-        "map": "Mean Average Precision",
         "coverage": "Catalog Coverage",
-        "mrr": "Mean Reciprocal Rank",
         "gini": "Gini index",
         "div": "Diversity (ILS)",
     }
 
-    metric_index = metric_map[metric_name.lower()]
+    metric_key_map = {
+        "mace": "maces",
+        "diver": "divergences",
+        "coverage": "coverages",
+        "gini": "ginis",
+        "div": "diversities",
+    }
+
     nice_name = metric_name_to_nice_name[metric_name.lower()]
 
-    configs, metrics, labels, steps = [], [], [], []
+    metrics, labels, steps = [], [], []
     for idx, exp_file in enumerate(experiment_files):
         config = read_experiment(exp_file)
-        configs.append(config)
-        metric_raw = read_metrics(config, should_remove_outliers)[metric_index]
+        all_results = read_metrics(config, should_remove_outliers)
+        
+        n_trials = config["n_trials"]
+        metric_key = metric_key_map[metric_name.lower()]
+        trial_metrics = [all_results[seed][metric_key] for seed in SEEDS[:n_trials]]
+        metric_raw = np.mean(trial_metrics, axis=0)
+        
         metrics.append(metric_raw)
         if experiment_aliases is not None:
             label = str(experiment_aliases[idx])

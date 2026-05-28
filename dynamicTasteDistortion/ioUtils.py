@@ -103,64 +103,9 @@ def extract_experiment_configuration(cfg):
         }
 
 
-def read_metrics(cfg_file, should_remove_outliers=False):
-    data_type = cfg_file["data"]
-    size = cfg_file["size"]
-    file_size = input_size_to_file_name[size]
-
-    rounds = int(cfg_file["rounds"])
-    num_rounds_per_eval = int(cfg_file["num_rounds_per_eval"])
-    num_users = int(cfg_file["num_users"])
-
-    exp_name = cfg_file.get("exp_name", "default_experiment")
-
-    base_artifacts_path = (
-        Path(RESULTS_PATH)
-        / f"{data_type}_{file_size}"
-        / "simulated"
-        / f"exp={exp_name}"
-        / f"rounds={rounds}"
-        / f"users={num_users}"
-        / f"eval_every={num_rounds_per_eval}"
-    )
-    # Read maces pickle file
-    file_name = base_artifacts_path / "maces.pkl"
-    maces = pd.read_pickle(file_name)
-
-    # Read kl divs pickle file
-    file_name = base_artifacts_path / "divergences.pkl"
-    divergences = pd.read_pickle(file_name)
-
-    # Read MAP pickle file
-    # TODO: file is persisted with wrong name, but read correctly
-    # ill fix this soon
-    file_name = base_artifacts_path / "mace_at_k.pkl"
-    map_k = pd.read_pickle(file_name)
-
-    # Read catalog_coverage pickle file
-    file_name = base_artifacts_path / "catalog_coverage.pkl"
-    catalog_coverage = pd.read_pickle(file_name)
-
-    # Read MRR
-    file_name = base_artifacts_path / "mrrs.pkl"
-    mrr = pd.read_pickle(file_name)
-
-    # Read gini
-    file_name = base_artifacts_path / "gini.pkl"
-    gini = pd.read_pickle(file_name)
-
-    # Read diversities
-    file_name = base_artifacts_path / "diversities.pkl"
-    diversities = pd.read_pickle(file_name)
-    if should_remove_outliers:
-        maces = remove_outliers(maces)
-        divergences = remove_outliers(divergences)
-        map_k = remove_outliers(map_k)
-        catalog_coverage = remove_outliers(catalog_coverage)
-        mrr = remove_outliers(mrr)
-        gini = remove_outliers(gini)
-        diversities = remove_outliers(diversities)
-    return maces, divergences, map_k, catalog_coverage, mrr, gini, diversities
+def read_metrics(cfg_file):
+    base_artifacts_path = get_experiment_artifacts_path(cfg_file)
+    return load_pickle_artifact(f"{base_artifacts_path}/all_results.pkl")
 
 def load_bootstrapped_clicks(cfg):
     data_type = cfg["data_type"]
