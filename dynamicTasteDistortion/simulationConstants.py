@@ -4,9 +4,11 @@ input_size_to_file_name = {
     "l": "20m",
 }
 
+
+GLOBO_PATH = "dynamicTasteDistortion/data/globo"
 MOVIELENS_PATH = "dynamicTasteDistortion/data/movielens"
 YELP_PATH = "dynamicTasteDistortion/data/yelp"
-FOOD_PATH = 'dynamicTasteDistortion/data/food'
+FOOD_PATH = "dynamicTasteDistortion/data/food"
 
 ARTIFACTS_PATH = "dynamicTasteDistortion/artifacts"
 RESULTS_PATH = f"{ARTIFACTS_PATH}/results"

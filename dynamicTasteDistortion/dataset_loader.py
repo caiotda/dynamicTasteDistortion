@@ -1,3 +1,5 @@
+import glob
+
 import pandas as pd
 
 from dynamicTasteDistortion.scripts.data_utils import (
@@ -21,12 +23,16 @@ from dynamicTasteDistortion.simulationConstants import (
     REVIEWS_PER_USER_THRESHOLD,
     FOOD_PATH,
     YELP_PATH,
+    GLOBO_PATH,
     USER_COL,
     ITEM_COL,
     GENRES_COL,
+    TIMESTAMP_COL,
     RATING_COL,
     input_size_to_file_name,
 )
+
+from tqdm import tqdm
 
 input_size_to_sample_size = {
     "s": 1_000_000,
@@ -65,6 +71,72 @@ def download(dataset_url, destination_dir):
     if os.path.exists(file_name):
         os.remove(file_name)
     return file_name
+
+
+def read_globo_dataset_raw():
+    url = "https://www.kaggle.com/api/v1/datasets/download/gspmoreira/news-portal-user-interactions-by-globocom"
+    _ = download(url, GLOBO_PATH)
+    print("Download finished! Merging intermediate files.")
+    csv_files = sorted(glob.glob(f"{GLOBO_PATH}/clicks/clicks/*.csv"))
+    globo_columns = [
+        "user_id",
+        "session_id",
+        "session_start",
+        "session_size",
+        "click_article_id",
+        "click_timestamp",
+        "click_environment",
+        "click_deviceGroup",
+        "click_os",
+        "click_country",
+        "click_region",
+        "click_referrer_type",
+    ]
+    final_dataset = pd.DataFrame({}, columns=globo_columns)
+    for dataset_name in tqdm(csv_files, desc="Processing files..."):
+        dataset = pd.read_csv(dataset_name)
+        final_dataset = pd.concat([final_dataset, dataset], ignore_index=True)
+
+    final_dataset = final_dataset.drop(
+        columns=[
+            "session_id",
+            "session_start",
+            "session_size",
+            "click_environment",
+            "click_deviceGroup",
+            "click_os",
+            "click_country",
+            "click_region",
+            "click_referrer_type",
+        ]
+    ).rename(columns={"click_article_id": "article_id"})
+    return final_dataset
+
+
+def process_globo_df(df):
+    globo_articles = pd.read_csv(f"{GLOBO_PATH}/articles_metadata.csv")[
+        ["article_id", "category_id"]
+    ]
+    # 50% percentile
+    globo_articles = globo_articles[
+        globo_articles.groupby("category_id")["category_id"].transform("size") > 36
+    ]
+    globo_df = df.merge(globo_articles, on="article_id")
+    # Remove users with less than 10 interactions
+    globo_df = globo_df[globo_df.groupby("user_id")["user_id"].transform("size") > 10]
+    # Keep only categories with more than 30 interactions (25% perrcentile in globo df before)
+    globo_df = globo_df[
+        globo_df.groupby("category_id")["category_id"].transform("size") > 30
+    ]
+    globo_df = globo_df.rename(
+        columns={
+            "user_id": USER_COL,
+            "article_id": ITEM_COL,
+            "click_timestamp": TIMESTAMP_COL,
+            "category_id": GENRES_COL,
+        }
+    )
+    return globo_df
 
 
 def read_food_raw():
@@ -227,6 +299,11 @@ def get_food_df():
     return filtered_df
 
 
+def get_globo_df():
+    df = read_globo_dataset_raw()
+    return process_globo_df(df)
+
+
 def load_df(data_type, size):
     if data_type == "ml":
         return get_ml_df(size)
@@ -234,6 +311,8 @@ def load_df(data_type, size):
         return get_yelp_df(size)
     elif data_type == "food":
         return get_food_df()
+    elif data_type == "globo":
+        return get_globo_df()
     else:
         raise ValueError(f"Invalid data type: {data_type}")
 
@@ -248,9 +327,9 @@ def main():
     )
     parser.add_argument(
         "--data",
-        choices=["ml", "yelp", "food"],
+        choices=["ml", "yelp", "food", "globo"],
         required=True,
-        help="Dataset type: ml (MovieLens); yelp; food.com",
+        help="Dataset type: ml (MovieLens); yelp; food.com; globo.com",
     )
 
     args = parser.parse_args()
