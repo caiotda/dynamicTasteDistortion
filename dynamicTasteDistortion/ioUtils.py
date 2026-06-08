@@ -61,49 +61,49 @@ def read_experiment(exp_file):
 
 
 def extract_experiment_configuration(cfg):
-        model_type = cfg.get("model", "bpr")
-        data_type = cfg["data"]
-        size = cfg["size"]
-        file_size = input_size_to_file_name[size]
-        n_examination_trials = int(cfg.get("examination_attempts", 3))
+    model_type = cfg.get("model", "bpr")
+    data_type = cfg["data"]
+    size = cfg["size"]
+    file_size = input_size_to_file_name[size]
+    n_examination_trials = int(cfg.get("examination_attempts", 3))
 
-        exp_name = cfg.get("exp_name", "default_experiment")
-        calibration_type = cfg.get("calibrate", None)
-        calibration_type = (
-            str.lower(calibration_type) if calibration_type is not None else None
-        )
-        assert calibration_type in [
-            None,
-            "rating",
-            "constant",
-            "linear_time",
-            "exponential_time",
-        ], "Invalid calibration type specified in config."
+    exp_name = cfg.get("exp_name", "default_experiment")
+    calibration_type = cfg.get("calibrate", None)
+    calibration_type = (
+        str.lower(calibration_type) if calibration_type is not None else None
+    )
+    assert calibration_type in [
+        None,
+        "rating",
+        "constant",
+        "linear_time",
+        "exponential_time",
+    ], "Invalid calibration type specified in config."
 
-        rounds = int(cfg["rounds"])
-        num_rounds_per_eval = int(cfg["num_rounds_per_eval"])
-        num_users = int(cfg["num_users"])
-        model_params = cfg.get("params", None)
-        overwrite_model_selection = True if model_params is not None else False
+    rounds = int(cfg["rounds"])
+    num_rounds_per_eval = int(cfg["num_rounds_per_eval"])
+    num_users = int(cfg["num_users"])
+    model_params = cfg.get("params", None)
+    overwrite_model_selection = True if model_params is not None else False
 
-        preference_update_rate = float(cfg.get("preference_update_rate", 0))
-        n_trials = int(cfg.get("n_trials", 1))
-        return {
-            "model_type": model_type,
-            "data_type": data_type,
-            "size": size,
-            "file_size": file_size,
-            "n_examination_trials": n_examination_trials,
-            "exp_name": exp_name,
-            "calibration_type": calibration_type,
-            "rounds": rounds,
-            "num_rounds_per_eval": num_rounds_per_eval,
-            "num_users": num_users,
-            "model_params": model_params,
-            "overwrite_model_selection": overwrite_model_selection,
-            "preference_update_rate": preference_update_rate,
-            "n_trials": n_trials
-        }
+    preference_update_rate = float(cfg.get("preference_update_rate", 0))
+    n_trials = int(cfg.get("n_trials", 1))
+    return {
+        "model_type": model_type,
+        "data_type": data_type,
+        "size": size,
+        "file_size": file_size,
+        "n_examination_trials": n_examination_trials,
+        "exp_name": exp_name,
+        "calibration_type": calibration_type,
+        "rounds": rounds,
+        "num_rounds_per_eval": num_rounds_per_eval,
+        "num_users": num_users,
+        "model_params": model_params,
+        "overwrite_model_selection": overwrite_model_selection,
+        "preference_update_rate": preference_update_rate,
+        "n_trials": n_trials,
+    }
 
 
 def read_metrics(cfg_file):
@@ -155,17 +155,29 @@ def get_cv_results_path(cfg):
     return f"{base_path}_cv_results.csv"
 
 
-def get_oracle_matrix_path(cfg):
-    data_type = cfg["data_type"]
-    file_size = cfg["file_size"]
-    num_users = cfg["num_users"]
+def get_oracle_matrix_path(cfg=None, data_type=None, file_size=None, num_users=None):
+    if cfg is not None:
+        data_type = cfg["data_type"]
+        file_size = cfg["file_size"]
+        num_users = cfg["num_users"]
+    elif None in (data_type, file_size, num_users):
+        raise ValueError(
+            "Either cfg or all of data_type, file_size, num_users must be provided"
+        )
     return f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_oracle.pkl"
 
 
-def get_timestamp_behavior_path(cfg):
-    data_type = cfg["data_type"]
-    file_size = cfg["file_size"]
-    num_users = cfg["num_users"]
+def get_timestamp_behavior_path(
+    cfg=None, data_type=None, file_size=None, num_users=None
+):
+    if cfg is not None:
+        data_type = cfg["data_type"]
+        file_size = cfg["file_size"]
+        num_users = cfg["num_users"]
+    elif None in (data_type, file_size, num_users):
+        raise ValueError(
+            "Either cfg or all of data_type, file_size, num_users must be provided"
+        )
     return f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}_n_users={num_users}_avg_time_diff.csv"
 
 
@@ -179,7 +191,9 @@ def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
     else:
         class_cutoff = 4.0
 
-    oracle_output_path = get_oracle_matrix_path(data_type, file_size, num_users)
+    oracle_output_path = get_oracle_matrix_path(
+        data_type=data_type, file_size=file_size, num_users=num_users
+    )
     if os.path.exists(oracle_output_path):
         print(
             f"Filled oracle matrix for {data_type}_{file_size} that uses {num_users} users already exists! Skipping matrix filling."
@@ -342,7 +356,7 @@ def get_or_create_oracle_model_artifacts(df, data_type, size):
 
 def get_or_create_time_diff_df(df, data_type, size, users):
     num_users = len(users)
-    timestamp_path = get_timestamp_behavior_path(data_type, size, num_users)
+    timestamp_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}_{size}_n_users={num_users}_avg_time_diff.csv"
     if os.path.exists(timestamp_path):
         print(
             f"Timestamp behavior for {data_type}_{size} that uses {num_users} users already exists! Skipping timestamp behavior calculation."

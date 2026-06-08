@@ -47,8 +47,12 @@ def main():
     data_type = args.data
     file_size = input_size_to_file_name[args.size]
 
-    preference_matrix_path = get_oracle_matrix_path(data_type, file_size, num_users)
-    timestamp_output_path = get_timestamp_behavior_path(data_type, file_size, num_users)
+    preference_matrix_path = get_oracle_matrix_path(
+        data_type=data_type, file_size=file_size, num_users=num_users
+    )
+    timestamp_output_path = get_timestamp_behavior_path(
+        data_type=data_type, file_size=file_size, num_users=num_users
+    )
     if os.path.exists(preference_matrix_path):
         print("Reading filled preference matrix...")
         oracle_df = pd.read_pickle(preference_matrix_path)
@@ -78,6 +82,7 @@ def main():
         initial_date=0.0,
         user_timestamp_distribution=userToExpDistribution,
         num_interactions_bootstrapped=500_000,
+        config=None,
     )
     print(f"Done! Saving bootstrapped clicks...")
     bootstrapped_clicks_path = f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_bootstrapped.pkl"
