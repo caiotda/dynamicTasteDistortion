@@ -21,6 +21,9 @@ from dynamicTasteDistortion.ioUtils import (
     get_or_create_oracle_matrix,
     get_or_create_oracle_model_artifacts,
     get_or_create_time_diff_df,
+    get_item_id_to_idx_mapping,
+    get_user_id_to_idx_mapping,
+    save_pickle_artifact
 )
 from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 
@@ -80,9 +83,9 @@ def main():
     base_file = pd.read_pickle(file_path)
     print("Done!")
 
-    df, _, _ = standardize_ids(base_file)
     print("Creating oracle model...")
-    oracle_model = get_or_create_oracle_model_artifacts(df, data_type, file_size)
+    # We create the oracle based on the entire dataset, in order to avoid removing important neighborhood information
+    oracle_model = get_or_create_oracle_model_artifacts(df=base_file, data_type=data_type, file_size=file_size)
     rating_scale = (1, 5)
     if data_type == "food":
         class_cutoff = 3.0
@@ -95,7 +98,7 @@ def main():
     print("Fitting and evaluating oracle model...")
     trained_model, f1_score_test = fit_evaluate(
         oracle_model,
-        full_df=df,
+        full_df=base_file,
         test_size=0.3,
         class_cutoff=class_cutoff,
         rating_scale=rating_scale,
@@ -106,19 +109,27 @@ def main():
     print(
         f"Creating filled oracle preference matrix for sample of {num_users} users..."
     )
-    candidates = df[USER_COL].unique().tolist()
 
+
+    candidates = base_file[USER_COL].unique().tolist()
     if num_users is not None:
         idx = torch.randperm(len(candidates))[:num_users]
         users = [candidates[i] for i in idx.tolist()]
 
     else:
         users = candidates
+    print(f"Filtering {num_users} random users and standardizing ids to idxs")
+    # filtered and standardized df
+    df, user_id_to_idx, item_id_to_idx = standardize_ids(base_file)
+    users_idx = [user_id_to_idx[user] for user in users]
+    filtered_df = df[df[USER_COL].isin(users_idx)]
 
-    prediction_df = df[df[USER_COL].isin(users)]
+    save_pickle_artifact(user_id_to_idx, get_user_id_to_idx_mapping(data_type=data_type, file_size=file_size, num_users=num_users))
+    save_pickle_artifact(item_id_to_idx, get_item_id_to_idx_mapping(data_type=data_type, file_size=file_size, num_users=num_users))
+    # Create oracle matrix... shape: (sampled_num_users x num_items)
     _ = get_or_create_oracle_matrix(
         oracle_model=trained_model,
-        df=prediction_df,
+        df=base_file,
         data_type=data_type,
         file_size=file_size,
         users=users,
@@ -128,8 +139,8 @@ def main():
         # Handles timestamp duplicates due to k-random negative sampling
         # process: negative samples inherit the timestamp of positive samples.
         # so we remove the negative rows in order to don't affect how we calculate timestamps
-        df = df[df["rating"] == 1]
-    get_or_create_time_diff_df(df, data_type, file_size, users)
+        filtered_df = filtered_df[filtered_df["rating"] == 1]
+    get_or_create_time_diff_df(filtered_df, data_type, file_size, num_users)
 
     print("All done!")
 

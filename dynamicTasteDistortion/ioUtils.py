@@ -188,6 +188,7 @@ def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
     elif data_type == "globo":
         # This is the only dataset that is based on implicit feedback.
         class_cutoff = 0.5
+        rating_scale = (0,1)
     else:
         class_cutoff = 4.0
 
@@ -201,13 +202,13 @@ def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
         filled_oracle_matrix = load_pickle_artifact(oracle_output_path)
     else:
         print("Filling up rating matrix...")
-        filled_oracle_matrix_non_standart = fill_out_matrix(
+        filled_oracle_matrix = fill_out_matrix(
             base_df=df,
             model=oracle_model,
             user_sample=users,
             rating_cutoff=class_cutoff,
+            rating_scale=rating_scale
         )
-        filled_oracle_matrix, _, _ = standardize_ids(filled_oracle_matrix_non_standart)
         print(f"Writing filled out matrix to {oracle_output_path}")
     filled_oracle_matrix.to_pickle(oracle_output_path)
     return filled_oracle_matrix
@@ -354,8 +355,7 @@ def get_or_create_oracle_model_artifacts(df, data_type, size):
     return oracle_model
 
 
-def get_or_create_time_diff_df(df, data_type, size, users):
-    num_users = len(users)
+def get_or_create_time_diff_df(df, data_type, size, num_users):
     timestamp_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}_{size}_n_users={num_users}_avg_time_diff.csv"
     if os.path.exists(timestamp_path):
         print(
@@ -363,7 +363,7 @@ def get_or_create_time_diff_df(df, data_type, size, users):
         )
         avg_std_time_diff_per_user = pd.read_csv(timestamp_path)
     else:
-        avg_std_time_diff_per_user = get_timestamp_behavior(base_df=df, sample=users)
+        avg_std_time_diff_per_user = get_timestamp_behavior(df=df)
 
         if len(avg_std_time_diff_per_user) == 0:
             print("Timestamp df is emtpy! Please check get_timestamp_behavior func")
