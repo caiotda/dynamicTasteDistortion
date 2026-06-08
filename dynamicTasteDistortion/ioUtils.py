@@ -166,6 +166,17 @@ def get_oracle_matrix_path(cfg=None, data_type=None, file_size=None, num_users=N
         )
     return f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_oracle.pkl"
 
+def get_idx_to_id_mapping_path(data_type, file_size, num_users):
+    return f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_mapping"
+
+def get_user_id_to_idx_mapping(data_type, file_size, num_users):
+    path = get_idx_to_id_mapping_path(data_type, file_size, num_users)
+    return f"{path}_user.pkl"
+
+def get_item_id_to_idx_mapping(data_type, file_size, num_users):
+    path = get_idx_to_id_mapping_path(data_type, file_size, num_users)
+    return f"{path}_item.pkl"
+
 
 def get_timestamp_behavior_path(
     cfg=None, data_type=None, file_size=None, num_users=None
