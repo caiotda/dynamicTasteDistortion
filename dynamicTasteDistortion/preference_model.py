@@ -13,6 +13,7 @@ from dynamicTasteDistortion.simulationConstants import (
     MOVIELENS_PATH,
     FOOD_PATH,
     YELP_PATH,
+    GLOBO_PATH,
     input_size_to_file_name,
 )
 
@@ -23,14 +24,19 @@ from dynamicTasteDistortion.ioUtils import (
 )
 from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 
-DATA_TO_PATH = {"ml": MOVIELENS_PATH, "yelp": YELP_PATH, "food": FOOD_PATH}
+DATA_TO_PATH = {
+    "ml": MOVIELENS_PATH,
+    "yelp": YELP_PATH,
+    "food": FOOD_PATH,
+    "globo": GLOBO_PATH,
+}
 
 
-def fit_evaluate(model, full_df, test_size=0.3, class_cutoff=4.0):
+def fit_evaluate(model, full_df, test_size=0.3, class_cutoff=4.0, rating_scale=(1, 5)):
 
     df_main_cols = full_df[["user", "item", "rating"]]
     trainset, testset = train_test_split(df_main_cols, test_size=test_size)
-    reader = Reader(rating_scale=(1, 5))
+    reader = Reader(rating_scale=rating_scale)
     trainset = SurpriseDataset.load_from_df(trainset, reader).build_full_trainset()
     testset = list(testset.itertuples(index=False, name=None))
 
@@ -59,9 +65,9 @@ def main():
 
     parser.add_argument(
         "--data",
-        choices=["ml", "yelp", "food"],
+        choices=["ml", "yelp", "food", "globo"],
         required=True,
-        help="Dataset type: ml (MovieLens); yelp; food",
+        help="Dataset type: ml (MovieLens); yelp; food; globo.com",
     )
     args = parser.parse_args()
     data_type = args.data
@@ -77,14 +83,22 @@ def main():
     df, _, _ = standardize_ids(base_file)
     print("Creating oracle model...")
     oracle_model = get_or_create_oracle_model_artifacts(df, data_type, file_size)
-
-    if data_type != "food":
+    rating_scale = (1, 5)
+    if data_type == "food":
         class_cutoff = 3.0
+    elif data_type == "globo":
+        # This is the only dataset that is based on implicit feedback.
+        rating_scale = (0, 1)
+        class_cutoff = 0.5
     else:
         class_cutoff = 4.0
     print("Fitting and evaluating oracle model...")
     trained_model, f1_score_test = fit_evaluate(
-        oracle_model, full_df=df, test_size=0.3, class_cutoff=class_cutoff
+        oracle_model,
+        full_df=df,
+        test_size=0.3,
+        class_cutoff=class_cutoff,
+        rating_scale=rating_scale,
     )
     print(
         f"Model selection finished! model achieved f1 score of {f1_score_test:.2f} on test_set"
@@ -110,6 +124,11 @@ def main():
         users=users,
     )
     print("Defining user timestamp behaviour from source file...")
+    if data_type == "globo":
+        # Handles timestamp duplicates due to k-random negative sampling
+        # process: negative samples inherit the timestamp of positive samples.
+        # so we remove the negative rows in order to don't affect how we calculate timestamps
+        df = df[df["rating"] == 1]
     get_or_create_time_diff_df(df, data_type, file_size, users)
 
     print("All done!")

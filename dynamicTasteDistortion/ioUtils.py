@@ -36,26 +36,29 @@ import pickle
 
 import yaml
 
+
 def get_model_and_params_paths(config):
-        """
-        Extract model and params paths from config.
-        
-        Args:
-            config: Configuration dictionary containing data_type, file_size, 
-                    num_users, and model_type keys.
-        
-        Returns:
-            tuple: (model_path, best_params_path) as strs.
-        """
-        model_path = get_model_path(config)
-        best_params_path = get_best_params_path(config)
-        
-        return model_path, best_params_path
+    """
+    Extract model and params paths from config.
+
+    Args:
+        config: Configuration dictionary containing data_type, file_size,
+                num_users, and model_type keys.
+
+    Returns:
+        tuple: (model_path, best_params_path) as strs.
+    """
+    model_path = get_model_path(config)
+    best_params_path = get_best_params_path(config)
+
+    return model_path, best_params_path
+
 
 def read_experiment(exp_file):
     with open(exp_file, "r") as f:
         cfg = yaml.safe_load(f)
     return cfg
+
 
 def extract_experiment_configuration(cfg):
         model_type = cfg.get("model", "bpr")
@@ -107,13 +110,12 @@ def read_metrics(cfg_file):
     base_artifacts_path = get_experiment_artifacts_path(cfg_file)
     return load_pickle_artifact(f"{base_artifacts_path}/all_results.pkl")
 
+
 def load_bootstrapped_clicks(cfg):
     data_type = cfg["data_type"]
     file_size = cfg["file_size"]
     num_users = cfg["num_users"]
-    output_path = (
-        f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_bootstrapped.pkl"
-    )
+    output_path = f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_bootstrapped.pkl"
     with open(output_path, "rb") as f:
         bootstrapped_clicks = pickle.load(f)
     return bootstrapped_clicks
@@ -166,12 +168,16 @@ def get_timestamp_behavior_path(cfg):
     num_users = cfg["num_users"]
     return f"{MODEL_ARTIFACTS_PATH}/{data_type}_{file_size}_n_users={num_users}_avg_time_diff.csv"
 
+
 def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
     num_users = len(users)
-    if data_type == "ml":
-        class_cutoff = 4.0
-    else:
+    if data_type == "food":
         class_cutoff = 3.0
+    elif data_type == "globo":
+        # This is the only dataset that is based on implicit feedback.
+        class_cutoff = 0.5
+    else:
+        class_cutoff = 4.0
 
     oracle_output_path = get_oracle_matrix_path(data_type, file_size, num_users)
     if os.path.exists(oracle_output_path):
@@ -261,7 +267,9 @@ def instantiate_model(config, hyperparameter_tuning_df):
                 f"No {model_type} found for {data_type}_{file_size} with {num_users} sampled users. Starting hyperparameter tuning."
             )
             tuner = HyperParameterTuner(hyperparameter_tuning_df, ModelClass)
-            model, cv_results, best_params = tuner.tune(truth_set=hyperparameter_tuning_df, k=5)
+            model, cv_results, best_params = tuner.tune(
+                truth_set=hyperparameter_tuning_df, k=5
+            )
             save_pickle_artifact(best_params, best_params_path)
             save_pickle_artifact(model, model_path)
             cv_results_save_path = get_cv_results_path(config)
@@ -275,6 +283,7 @@ def instantiate_model(config, hyperparameter_tuning_df):
 
     return model
 
+
 def get_experiment_artifacts_path(config):
     data_type = config["data_type"]
     size = config["size"]
@@ -283,7 +292,7 @@ def get_experiment_artifacts_path(config):
     rounds = config["rounds"]
     num_rounds_per_eval = config["num_rounds_per_eval"]
     num_users = config["num_users"]
-    
+
     base_artifacts_path = (
         Path(RESULTS_PATH)
         / f"{data_type}_{file_size}"
@@ -296,6 +305,7 @@ def get_experiment_artifacts_path(config):
 
     return base_artifacts_path
 
+
 def get_or_create_oracle_model_artifacts(df, data_type, size):
     oracle_model_path = f"{MODEL_ARTIFACTS_PATH}/{data_type}_{size}/oracle_model.pkl"
 
@@ -307,11 +317,19 @@ def get_or_create_oracle_model_artifacts(df, data_type, size):
     else:
         os.makedirs(f"{MODEL_ARTIFACTS_PATH}/{data_type}_{size}/", exist_ok=True)
         print("Starting model selection...")
-        if data_type != "food":
-            class_cutoff = 4.0
-        else:
+        rating_scale = (1, 5)
+        if data_type == "food":
             class_cutoff = 3.0
-        oracle_model, f1_results = choose_best_model(df, class_cutoff=class_cutoff)
+        elif data_type == "globo":
+            # This is the only dataset that is based on implicit feedback.
+            class_cutoff = 0.5
+            rating_scale = (0, 1)
+            # We also convert genres into list of strings for
+        else:
+            class_cutoff = 4.0
+        oracle_model, f1_results = choose_best_model(
+            df, class_cutoff=class_cutoff, rating_scale=rating_scale
+        )
         save_pickle_artifact(oracle_model, oracle_model_path)
         destination_dir = f"{RESULTS_PATH}/{data_type}_{size}"
         os.makedirs(destination_dir, exist_ok=True)

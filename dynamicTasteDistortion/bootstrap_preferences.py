@@ -32,9 +32,9 @@ def main():
     )
     parser.add_argument(
         "--data",
-        choices=["ml", "yelp", "steam"],
+        choices=["ml", "yelp", "steam", "globo"],
         required=True,
-        help="Dataset type: ml (MovieLens); yelp; steam",
+        help="Dataset type: ml (MovieLens); yelp; steam; Globo.com",
     )
 
     parser.add_argument(

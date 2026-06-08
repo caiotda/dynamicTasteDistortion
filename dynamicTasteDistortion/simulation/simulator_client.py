@@ -42,7 +42,7 @@ def main():
     config = extract_experiment_configuration(cfg)
 
     n_trials = config["n_trials"]
-    timestamp_distribution = pd.read_csv(get_timestamp_behavior_path(config))
+    timestamp_distribution = pd.read_csv(get_timestamp_behavior_path(cfg=config))
     userToExpDistribution = {
         user: expon(scale=row["median_timestamp_diff"])
         for user, row in timestamp_distribution.iterrows()

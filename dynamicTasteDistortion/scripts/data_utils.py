@@ -1,14 +1,15 @@
 import unicodedata
 import re
 
+import numpy as np
 import pandas as pd
 
+from tqdm import tqdm
 from dynamicTasteDistortion.simulationConstants import (
     USER_COL,
     ITEM_COL,
     REVIEWS_PER_USER_THRESHOLD,
 )
-
 
 synonyms = {
     "children": "child",
@@ -17,6 +18,7 @@ synonyms = {
     "thrill": "thriller",
 }
 
+
 def concat_dfs(df1, df2):
     # Wrapper to handle with annoying FutureWarning when dealing
     # with a empty dataframe
@@ -24,6 +26,36 @@ def concat_dfs(df1, df2):
     to_concat = [df for df in dfs if not df.empty]
     final_df = pd.concat(to_concat, ignore_index=True)
     return final_df
+
+
+def sample_negatives(df, k, candidates):
+    candidates_arr = np.array(list(candidates))
+    observed = set(zip(df["user"], df["item"]))
+
+    users = df["user"].values
+    n = len(users)
+
+    sampled = np.random.choice(candidates_arr, size=(n, k), replace=True)
+    timestamps = df["timestamp"].values
+
+    records = []
+    for i, user in tqdm(enumerate(users), total=n, desc="Processing users..."):
+        for candidate in sampled[i]:
+            if (user, candidate) not in observed:
+                records.append((user, candidate, 0, timestamps[i]))
+
+    positives = df[["user", "item", "timestamp"]].copy()
+    positives["rating"] = 1
+    negatives = pd.DataFrame(records, columns=["user", "item", "rating", "timestamp"])
+
+    result = pd.concat([positives, negatives]).reset_index(drop=True)
+    item_genre_map = (
+        df[["item", "genres"]].drop_duplicates().set_index("item")["genres"]
+    )
+    result["genres"] = result["item"].map(item_genre_map)
+    result["genres"] = result["genres"].apply(lambda x: [str(x)])
+
+    return result
 
 
 def preprocess_genres(df, genre_col="genres", SEP="|"):

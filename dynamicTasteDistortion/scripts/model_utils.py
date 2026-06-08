@@ -112,6 +112,7 @@ class HyperParameterTuner:
         def choice(options):
             idx = torch.randint(len(options), (1,)).item()
             return options[idx]
+
         train_df, val_df, _ = temporal_train_val_test_split(
             df=self.df,
             user_col=USER_COL,
@@ -211,11 +212,11 @@ class ModelChooser:
         return samples
 
 
-def choose_best_model(df, class_cutoff=4.0):
+def choose_best_model(df, class_cutoff=4.0, rating_scale=(1, 5)):
     f1_results = {}
 
     model_names = ["SVD", "SVD++", "NMF"]
-    reader = Reader(rating_scale=(1, 5))
+    reader = Reader(rating_scale=rating_scale)
 
     train_df, val_df, test_df = temporal_train_val_test_split(
         df=df,
@@ -224,7 +225,9 @@ def choose_best_model(df, class_cutoff=4.0):
         test_pct=0.15,
     )
 
-    print(f"Separação de dataset baseado em tempo. Tamanho de treino, val e test: {len(train_df)}; {len(test_df)}; {len(val_df)}")
+    print(
+        f"Separação de dataset baseado em tempo. Tamanho de treino, val e test: {len(train_df)}; {len(test_df)}; {len(val_df)}"
+    )
 
     train_surprise = SurpriseDataset.load_from_df(
         train_df[["user", "item", "rating"]], reader

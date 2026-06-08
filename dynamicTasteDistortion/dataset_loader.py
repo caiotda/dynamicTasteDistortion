@@ -6,6 +6,7 @@ from dynamicTasteDistortion.scripts.data_utils import (
     filter_inactive_users,
     preprocess_genres,
     standardize_ids,
+    sample_negatives,
 )
 
 pd.options.mode.chained_assignment = None
@@ -136,7 +137,14 @@ def process_globo_df(df):
             "category_id": GENRES_COL,
         }
     )
-    return globo_df
+
+    # Enrich with negative sampling]
+    k = 3
+    print(
+        f"Enriching globo.com dataset with k={k} random negative samples, due to implcit feedback"
+    )
+    candidates = globo_df["item"].drop_duplicates()
+    return sample_negatives(globo_df, k=k, candidates=candidates)
 
 
 def read_food_raw():
@@ -299,8 +307,8 @@ def get_food_df():
     return filtered_df
 
 
-def get_globo_df():
-    df = read_globo_dataset_raw()
+def get_globo_df(size):
+    df = read_globo_dataset_raw().sample(size)
     return process_globo_df(df)
 
 
@@ -312,7 +320,7 @@ def load_df(data_type, size):
     elif data_type == "food":
         return get_food_df()
     elif data_type == "globo":
-        return get_globo_df()
+        return get_globo_df(size)
     else:
         raise ValueError(f"Invalid data type: {data_type}")
 
@@ -352,6 +360,10 @@ def main():
                 f"Food.com dataset is at most 1m interactions, can´t get size of {size}. No filtering will be applied"
             )
         output_file = f"{FOOD_PATH}/food_{output_file_size}"
+
+    if args.data == "globo":
+        df = get_globo_df(size)
+        output_file = f"{GLOBO_PATH}/globo_{output_file_size}"
 
     df.to_csv(f"{output_file}.csv", index=False)
     df.to_pickle(f"{output_file}.pkl")

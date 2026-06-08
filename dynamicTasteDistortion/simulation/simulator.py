@@ -77,7 +77,7 @@ class Simulator:
         user_timestamp_distribution : dict
             Maps user IDs to their timestamp delta probability distributions.
         config : dict
-            Configuration dictionary containing simulation parameters:
+            Configuration dictionary containing simulation parameters. Accepts None if running bootstrapping:
             - calibration_type (str): Type of calibration to apply during simulation.
             - preference_update_rate (float): Probability of acquiring new preferences from examined but unclicked items.
             - n_examination_trials (int): Number of examination trials for user feedback simulation.
@@ -89,12 +89,9 @@ class Simulator:
             Pre-computed bootstrapped click interactions. If None, bootstraps from oracle matrix.
         """
 
-        self.calibration_type = config["calibration_type"]
-        self.preference_update_rate = config["preference_update_rate"]
-        self.n_examination_trials = config["n_examination_trials"]
-        self.rounds = config["rounds"]
-        self.num_rounds_per_eval = config["num_rounds_per_eval"]
-
+        self.config = config
+        # TODO gamb
+        self.n_examination_trials = 3
         self.device = (
             model.device
             if model is not None
@@ -402,6 +399,12 @@ class Simulator:
         maces : list
             List of MACE metric values computed every L rounds to evaluate recommendation quality.
         """
+
+        self.calibration_type = self.config["calibration_type"]
+        self.preference_update_rate = self.config["preference_update_rate"]
+        self.n_examination_trials = self.config["n_examination_trials"]
+        self.rounds = self.config["rounds"]
+        self.num_rounds_per_eval = self.config["num_rounds_per_eval"]
 
         H_0 = self.click_matrix.copy()
         maces = []
