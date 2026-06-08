@@ -5,7 +5,6 @@ import pandas as pd
 from dynamicTasteDistortion.scripts.data_utils import (
     filter_inactive_users,
     preprocess_genres,
-    standardize_ids,
     sample_negatives,
 )
 
@@ -295,8 +294,7 @@ def get_yelp_df(size):
     raw_df = read_yelp_raw(size)
     cleaned = process_df(raw_df, rating_threshold=4)
     cleaned[GENRES_COL] = preprocess_genres(cleaned, GENRES_COL, SEP=",")
-    final_df, _, _ = standardize_ids(cleaned)
-    return final_df
+    return cleaned
 
 
 def get_food_df():
@@ -309,7 +307,8 @@ def get_food_df():
 
 def get_globo_df(size):
     df = read_globo_dataset_raw().sample(size)
-    return process_globo_df(df)
+    processed_df =  process_globo_df(df)
+    return processed_df
 
 
 def load_df(data_type, size):
