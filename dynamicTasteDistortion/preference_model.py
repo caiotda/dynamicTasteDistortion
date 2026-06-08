@@ -9,6 +9,7 @@ import torch
 
 
 from dynamicTasteDistortion.simulationConstants import (
+    ITEM_COL,
     USER_COL,
     MOVIELENS_PATH,
     FOOD_PATH,
@@ -21,11 +22,12 @@ from dynamicTasteDistortion.ioUtils import (
     get_or_create_oracle_matrix,
     get_or_create_oracle_model_artifacts,
     get_or_create_time_diff_df,
-    get_item_id_to_idx_mapping,
-    get_user_id_to_idx_mapping,
+    get_user_id_to_idx_mapping_path,
+    get_item_id_to_idx_mapping_path,
+    get_user_idx_to_id_mapping_path,
+    get_item_idx_to_id_mapping_path,
     save_pickle_artifact
 )
-from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 
 DATA_TO_PATH = {
     "ml": MOVIELENS_PATH,
@@ -85,7 +87,7 @@ def main():
 
     print("Creating oracle model...")
     # We create the oracle based on the entire dataset, in order to avoid removing important neighborhood information
-    oracle_model = get_or_create_oracle_model_artifacts(df=base_file, data_type=data_type, file_size=file_size)
+    oracle_model = get_or_create_oracle_model_artifacts(df=base_file, data_type=data_type, size=file_size)
     rating_scale = (1, 5)
     if data_type == "food":
         class_cutoff = 3.0
@@ -112,6 +114,8 @@ def main():
 
 
     candidates = base_file[USER_COL].unique().tolist()
+    items = base_file[ITEM_COL].unique().tolist()
+
     if num_users is not None:
         idx = torch.randperm(len(candidates))[:num_users]
         users = [candidates[i] for i in idx.tolist()]
@@ -119,13 +123,24 @@ def main():
     else:
         users = candidates
     print(f"Filtering {num_users} random users and standardizing ids to idxs")
-    # filtered and standardized df
-    df, user_id_to_idx, item_id_to_idx = standardize_ids(base_file)
-    users_idx = [user_id_to_idx[user] for user in users]
-    filtered_df = df[df[USER_COL].isin(users_idx)]
+    filtered_df = base_file[base_file[USER_COL].isin(users)].copy()
 
-    save_pickle_artifact(user_id_to_idx, get_user_id_to_idx_mapping(data_type=data_type, file_size=file_size, num_users=num_users))
-    save_pickle_artifact(item_id_to_idx, get_item_id_to_idx_mapping(data_type=data_type, file_size=file_size, num_users=num_users))
+    user_id_to_idx = {user: idx for idx, user in enumerate(users)}
+    item_id_to_idx = {item: idx for idx, item in enumerate(items)}
+    user_idx_to_id = {idx: user for user, idx in user_id_to_idx.items()}
+    item_idx_to_id = {idx: item for item, idx in item_id_to_idx.items()}
+
+    save_pickle_artifact(user_id_to_idx, get_user_id_to_idx_mapping_path(data_type, file_size, num_users))
+    save_pickle_artifact(item_id_to_idx, get_item_id_to_idx_mapping_path(data_type, file_size, num_users))
+
+    save_pickle_artifact(user_idx_to_id, get_user_idx_to_id_mapping_path(data_type, file_size, num_users))
+    save_pickle_artifact(item_idx_to_id, get_item_idx_to_id_mapping_path(data_type, file_size, num_users))
+
+
+
+    filtered_df[USER_COL] = filtered_df[USER_COL].map(user_id_to_idx)
+    filtered_df[ITEM_COL] = filtered_df[ITEM_COL].map(item_id_to_idx)
+
     # Create oracle matrix... shape: (sampled_num_users x num_items)
     _ = get_or_create_oracle_matrix(
         oracle_model=trained_model,
@@ -140,6 +155,9 @@ def main():
         # process: negative samples inherit the timestamp of positive samples.
         # so we remove the negative rows in order to don't affect how we calculate timestamps
         filtered_df = filtered_df[filtered_df["rating"] == 1]
+
+    print(f"base_file - min users: {base_file[USER_COL].min()}, max users: {base_file[USER_COL].max()}, unique users: {base_file[USER_COL].nunique()}")
+    print(f"filtered_df - min users: {filtered_df[USER_COL].min()}, max users: {filtered_df[USER_COL].max()}, unique users: {filtered_df[USER_COL].nunique()}")
     get_or_create_time_diff_df(filtered_df, data_type, file_size, num_users)
 
     print("All done!")

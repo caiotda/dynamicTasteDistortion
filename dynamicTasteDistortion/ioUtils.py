@@ -166,16 +166,24 @@ def get_oracle_matrix_path(cfg=None, data_type=None, file_size=None, num_users=N
         )
     return f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_oracle.pkl"
 
-def get_idx_to_id_mapping_path(data_type, file_size, num_users):
+def get_ids_mapping_path(data_type, file_size, num_users):
     return f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_mapping"
 
-def get_user_id_to_idx_mapping(data_type, file_size, num_users):
-    path = get_idx_to_id_mapping_path(data_type, file_size, num_users)
-    return f"{path}_user.pkl"
+def get_user_id_to_idx_mapping_path(data_type, file_size, num_users):
+    path = get_ids_mapping_path(data_type, file_size, num_users)
+    return f"{path}_user_id_to_idx.pkl"
 
-def get_item_id_to_idx_mapping(data_type, file_size, num_users):
-    path = get_idx_to_id_mapping_path(data_type, file_size, num_users)
-    return f"{path}_item.pkl"
+def get_item_id_to_idx_mapping_path(data_type, file_size, num_users):
+    path = get_ids_mapping_path(data_type, file_size, num_users)
+    return f"{path}_item_id_to_idx.pkl"
+
+def get_user_idx_to_id_mapping_path(data_type, file_size, num_users):
+    path = get_ids_mapping_path(data_type, file_size, num_users)
+    return f"{path}_user_idx_to_id.pkl"
+
+def get_item_idx_to_id_mapping_path(data_type, file_size, num_users):
+    path = get_ids_mapping_path(data_type, file_size, num_users)
+    return f"{path}_item_idx_to_id.pkl"
 
 
 def get_timestamp_behavior_path(
@@ -199,7 +207,7 @@ def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
     elif data_type == "globo":
         # This is the only dataset that is based on implicit feedback.
         class_cutoff = 0.5
-        rating_scale = (0,1)
+        rating_scale = (0, 1)
     else:
         class_cutoff = 4.0
 
@@ -212,13 +220,17 @@ def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
         )
         filled_oracle_matrix = load_pickle_artifact(oracle_output_path)
     else:
+        user_id_to_idx_map =  load_pickle_artifact(get_user_id_to_idx_mapping_path(data_type=data_type, file_size=file_size, num_users=num_users))
+        item_id_to_idx_map = load_pickle_artifact(get_item_id_to_idx_mapping_path(data_type=data_type, file_size=file_size, num_users=num_users))
         print("Filling up rating matrix...")
         filled_oracle_matrix = fill_out_matrix(
             base_df=df,
             model=oracle_model,
             user_sample=users,
             rating_cutoff=class_cutoff,
-            rating_scale=rating_scale
+            rating_scale=rating_scale,
+            item_id_to_idx_map = item_id_to_idx_map,
+            user_id_to_idx_map = user_id_to_idx_map
         )
         print(f"Writing filled out matrix to {oracle_output_path}")
     filled_oracle_matrix.to_pickle(oracle_output_path)

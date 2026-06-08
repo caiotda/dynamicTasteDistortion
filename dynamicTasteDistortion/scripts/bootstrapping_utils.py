@@ -1,24 +1,23 @@
-from dynamicTasteDistortion.dynamicTasteDistortion.scripts.data_utils import standardize_ids
 import numpy as np
 import pandas as pd
 from surprise import Reader, Dataset as SurpriseDataset
 from tqdm import tqdm
 
 
-from dynamicTasteDistortion.simulationConstants import USER_COL
+from dynamicTasteDistortion.simulationConstants import ITEM_COL, USER_COL
 
 import os
 import tempfile
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-def fill_out_matrix(base_df, model, user_sample, rating_cutoff=4.0, batch_size=50_000, rating_scale=(1,5)):
+def fill_out_matrix(base_df, model, user_sample, item_id_to_idx_map, user_id_to_idx_map, rating_cutoff=4.0, batch_size=50_000, rating_scale=(1,5)):
     # ACM Disclosure: This function was AI generated. The previous version, which can be found
     # at this hash command (link) worked, but was prone to OOM errors. This new version uses 
     # pyarrow to save partial results in disk and uses parquet files instead of csv, avoiding 
     # RAM overhead.
 
-    reader = Reader(rating_scale)
+    reader = Reader(rating_scale=rating_scale)
     trainset = SurpriseDataset.load_from_df(
         base_df[["user", "item", "rating"]], reader
     ).build_full_trainset()
@@ -26,9 +25,7 @@ def fill_out_matrix(base_df, model, user_sample, rating_cutoff=4.0, batch_size=5
     model.fit(trainset)
     # We are only interested in generating predictions for a subset of users.
     # But we want to predict for every item in the original dataset.
-    std_df, user_id_to_idx, item_id_to_idx = standardize_ids(base_df)
     user_sample = list(user_sample)
-    user_sample_std = [user_id_to_idx[id] for id in user_sample]
 
     all_items = trainset.all_items()
     # user_ids = [trainset.to_raw_uid(u) for u in all_users]
@@ -53,9 +50,8 @@ def fill_out_matrix(base_df, model, user_sample, rating_cutoff=4.0, batch_size=5
             writer.write_table(table)
             buffer.clear()
 
-    for idx, user_id_std in enumerate(user_sample_std):
-        original_user_id = user_sample[idx]
-        inner_uid = trainset.to_inner_uid(original_user_id)
+    for user_id in tqdm(user_sample, desc="Predicting ratings for sampled users..."):
+        inner_uid = trainset.to_inner_uid(user_id)
         rated_items = {trainset.to_raw_iid(i) for i, _ in trainset.ur[inner_uid]}
 
         for item_id in item_ids:
@@ -63,12 +59,12 @@ def fill_out_matrix(base_df, model, user_sample, rating_cutoff=4.0, batch_size=5
                 # We need to predict with the original user id, hence 
                 # why we map it back. item_id is already the original
                 # id.
-                est = model.predict(original_user_id, item_id).est
+                est = model.predict(user_id, item_id).est
                 # We store the idx version of each user and item idx.
                 # The result is a standardized dataset.
                 buffer.append({
-                    "user": str(user_id_std),
-                    "item": str(item_id_to_idx[item_id]),
+                    "user": str(user_id_to_idx_map[user_id]),
+                    "item": str(item_id_to_idx_map[item_id]),
                     "rating": int(est >= rating_cutoff),
                     "genres": genres_map.get(item_id, ""),
                 })
@@ -80,7 +76,9 @@ def fill_out_matrix(base_df, model, user_sample, rating_cutoff=4.0, batch_size=5
 
     
     # Merge the filtered dataset with the filled out version.
-    filtered_original_df = std_df[std_df[USER_COL].isin(user_sample_std)]
+    filtered_original_df = base_df[base_df[USER_COL].isin(user_sample)].copy()
+    filtered_original_df[USER_COL] = filtered_original_df[USER_COL].map(user_id_to_idx_map)
+    filtered_original_df[ITEM_COL] = filtered_original_df[ITEM_COL].map(item_id_to_idx_map)
     base_out = filtered_original_df[["user", "item", "genres", "rating"]].copy()
     base_out["user"] = base_out["user"].astype(str)
     base_out["item"] = base_out["item"].astype(str)
@@ -92,6 +90,8 @@ def fill_out_matrix(base_df, model, user_sample, rating_cutoff=4.0, batch_size=5
     base_writer.close()
 
     df_filled = pd.read_parquet(tmp_dir)
+    df_filled["user"] = df_filled["user"].astype(int)
+    df_filled["item"] = df_filled["item"].astype(int)
     return df_filled
 
 def get_timestamp_behavior(df):
