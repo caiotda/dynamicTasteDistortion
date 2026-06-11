@@ -52,7 +52,12 @@ def main():
 
     results = {}
 
-    for seed in tqdm(seeds[:n_trials], desc="Running trials"):
+    """
+    problema: tem alguns itens que nunca foram colhidos no bootstrapped_df. Então o numero de embeddings do bpr_mf é menor que o numero de itens
+    na oracle_matrix.
+    """
+
+    for seed in tqdm(SEEDS[:n_trials], desc="Running trials"):
         torch.manual_seed(seed)
 
         model = instantiate_model(config, hyperparameter_tuning_df=bootstrapped_df)
@@ -64,8 +69,8 @@ def main():
             bootstrapped_df=bootstrapped_df,
             config=config,
         )
-        simulated_df, maces, divergences, coverages, ginis, diversities = sim.simulate(
-            k=20
+        simulated_df, maces, divergences, coverages, ginis, diversities, frags = (
+            sim.simulate(k=20)
         )
 
         base_artifacts_path = get_experiment_artifacts_path(config)
@@ -87,12 +92,15 @@ def main():
             diversities, f"{base_artifacts_path}/diversities_seed{seed}.pkl"
         )
 
+        save_pickle_artifact(frags, f"{base_artifacts_path}/frags_seed{seed}.pkl")
+
         results[seed] = {
             "maces": maces,
             "divergences": divergences,
             "coverages": coverages,
             "ginis": ginis,
             "diversities": diversities,
+            "frags": frags,
         }
 
     save_pickle_artifact(results, f"{base_artifacts_path}/all_results.pkl")

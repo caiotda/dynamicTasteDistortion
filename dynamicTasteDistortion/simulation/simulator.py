@@ -4,6 +4,7 @@ from dynamicTasteDistortion.scripts.metrics_utils import (
     precompute_jaccard,
     calculate_gini_index,
     diversity,
+    fragmentation,
 )
 import torch
 import os
@@ -107,23 +108,30 @@ class Simulator:
         }
 
         users = list(self.user_idx_to_id.values())
-        filtered_oracle_matrix = (
-            oracle_matrix[oracle_matrix[USER_COL].isin(users)]
-            if oracle_matrix is not None
-            else None
+
+        self.n_users = oracle_matrix[USER_COL].max() + 1
+        self.n_items = oracle_matrix[ITEM_COL].max() + 1
+        self.users = torch.tensor(users, device=self.device, dtype=torch.int32)
+        # We use bootstrapped df as candidates tensor because our model is coldstarted on it. Therefore, the model
+        # embeddings are dependent on which items were observed on the bootstrapped_df.
+        self.items = torch.arange(
+            bootstrapped_df[ITEM_COL].max(), device=self.device, dtype=torch.int32
         )
-        self.n_users = filtered_oracle_matrix[USER_COL].max() + 1
-        self.n_items = filtered_oracle_matrix[ITEM_COL].max() + 1
         un_normalized_map = (
-            filtered_oracle_matrix[[ITEM_COL, GENRES_COL]]
+            oracle_matrix[[ITEM_COL, GENRES_COL]]
             .set_index(ITEM_COL)[GENRES_COL]
             .to_dict()
         )
+
         self.item2genreMap = {k: list(v) for k, v in un_normalized_map.items()}
-        self.oracle_tensor = pandas_df_to_sparse_tensor(filtered_oracle_matrix)
+        self.oracle_tensor = pandas_df_to_sparse_tensor(oracle_matrix)
 
         self.interaction_recency_matrix = build_interaction_timestamp_matrix(
-            self.n_users, self.n_items, self.oracle_tensor, initial_date, self.device
+            self.n_users,
+            oracle_matrix[ITEM_COL].max() + 1,
+            self.oracle_tensor,
+            initial_date,
+            self.device,
         )
 
         self.use_random_rec = True if model is None else False
@@ -132,14 +140,8 @@ class Simulator:
         else:
             self.model = model
 
-        self.users = torch.tensor(users, device=self.device)
-        self.items = torch.tensor(
-            list(filtered_oracle_matrix[ITEM_COL].drop_duplicates()), device=self.device
-        )
-
         # Check if we have a bootstrapped set of clicks set; if not, we run the bootstrapping
         # process.
-        # TODO: move to client?
         if (bootstrapped_df is not None) and (not bootstrapped_df.empty):
             self.click_matrix = bootstrapped_df
         else:
@@ -156,11 +158,9 @@ class Simulator:
         self.click_matrix = preprocess_dataframe_for_calibration(self.click_matrix)
         # Genre distribution per item.
 
-        filtered_oracle_matrix[GENRES_COL] = filtered_oracle_matrix[GENRES_COL].apply(
-            tuple
-        )
+        oracle_matrix[GENRES_COL] = oracle_matrix[GENRES_COL].apply(tuple)
         self.p_g_i = build_item_genre_distribution_tensor(
-            filtered_oracle_matrix, self.n_items
+            oracle_matrix, oracle_matrix[ITEM_COL].max() + 1
         )
         n_genres = self.p_g_i.shape[1]
 
@@ -334,7 +334,6 @@ class Simulator:
             total=num_interactions_bootstrapped, desc="Bootstrapping clicks"
         ) as pbar:
             while len(bootstrapped_df) < num_interactions_bootstrapped:
-                mask = self._mask_previously_seen_items(bootstrapped_df).to(self.device)
                 rec, score = random_rec(self.items, n_users, k, mask=None)
                 round_df, _ = self.simulate_user_feedback(
                     rec=rec, score=score, from_bootstrap=True
@@ -371,7 +370,7 @@ class Simulator:
         return rec, score
 
     def _mask_previously_seen_items(self, users_history):
-        mask = torch.ones((self.n_users, self.n_items), dtype=torch.float32)
+        mask = torch.ones((self.n_users, len(self.items)), dtype=torch.float32)
         seen = users_history[[USER_COL, ITEM_COL]]
         user_idx = torch.tensor(seen[USER_COL].astype(int).values, dtype=torch.long)
         item_idx = torch.tensor(seen[ITEM_COL].astype(int).values, dtype=torch.long)
@@ -399,7 +398,6 @@ class Simulator:
         maces : list
             List of MACE metric values computed every L rounds to evaluate recommendation quality.
         """
-
         self.calibration_type = self.config["calibration_type"]
         self.preference_update_rate = self.config["preference_update_rate"]
         self.n_examination_trials = self.config["n_examination_trials"]
@@ -412,6 +410,7 @@ class Simulator:
         coverages = []
         ginis = []
         diversities = []
+        frags = []
         # This ensures that we always have a fresh model at each retrain, without knowing
         # its parameters
         initial_model = copy.deepcopy(self.model)
@@ -440,6 +439,7 @@ class Simulator:
         catalog_items = self.items.tolist()
         for round_idx in tqdm(range(1, self.rounds + 1), desc="Processing rounds..."):
             # We avoid recommending repeated items in the same interaction.
+
             rec, score = self._recommend(users_history=H_0, k=k, mask=mask)
 
             round_df, rec_df = self.simulate_user_feedback(
@@ -487,12 +487,14 @@ class Simulator:
             coverage = catalog_coverage(rec, catalog=self.items)
             gini = calculate_gini_index(rec, catalog=catalog_items)
             ils = diversity(rec, self.sim_lookup)
+            frag = fragmentation(rec)
 
             coverages.append(coverage)
             divergences.append(iteration_avg_divergence)
             maces.append(iteration_mace)
             ginis.append(gini)
             diversities.append(ils)
+            frags.append(frag)
             # self.num_rounds_per_eval = L
             if round_idx % self.num_rounds_per_eval == 0:
                 # Clicks that happened during the last L rounds are added to the rolling training dataset
@@ -511,4 +513,5 @@ class Simulator:
             coverages,
             ginis,
             diversities,
+            frags,
         )
