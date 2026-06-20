@@ -106,9 +106,50 @@ def extract_experiment_configuration(cfg):
     }
 
 
-def read_metrics(cfg_file):
+def read_metrics(cfg_file, remove_outliers=False):
+    # TODO: reimplementar o remove_outliers
     base_artifacts_path = get_experiment_artifacts_path(cfg_file)
     return load_pickle_artifact(f"{base_artifacts_path}/all_results.pkl")
+
+
+def read_metrics_per_seed(cfg_file, seed=42):
+    base_artifacts_path = get_experiment_artifacts_path(cfg_file)
+    # simulated_df.to_pickle(
+    #     base_artifacts_path / f"simulated_interactions_seed{seed}.pkl"
+    # )
+    maces = load_pickle_artifact(f"{base_artifacts_path}/maces_seed{seed}.pkl")
+
+    divergences = load_pickle_artifact(
+        f"{base_artifacts_path}/divergences_seed{seed}.pkl"
+    )
+
+    coverages = load_pickle_artifact(
+        f"{base_artifacts_path}/catalog_coverage_seed{seed}.pkl"
+    )
+    ginis = load_pickle_artifact(f"{base_artifacts_path}/gini_seed{seed}.pkl")
+
+    diversities = load_pickle_artifact(
+        f"{base_artifacts_path}/diversities_seed{seed}.pkl"
+    )
+
+    frags = load_pickle_artifact(f"{base_artifacts_path}/frags_seed{seed}.pkl")
+
+    return {
+        "maces": maces,
+        "divergences": divergences,
+        "coverages": coverages,
+        "ginis": ginis,
+        "diversities": diversities,
+        "fragmentation": frags,
+    }
+
+
+def read_simulated_interactions_per_experiment_seed(cfg_file, seed=42):
+    base_artifacts_path = get_experiment_artifacts_path(cfg_file)
+    simulated_df = load_pickle_artifact(
+        base_artifacts_path / f"simulated_interactions_seed{seed}.pkl"
+    )
+    return simulated_df
 
 
 def load_bootstrapped_clicks(cfg):
@@ -166,20 +207,25 @@ def get_oracle_matrix_path(cfg=None, data_type=None, file_size=None, num_users=N
         )
     return f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_oracle.pkl"
 
+
 def get_ids_mapping_path(data_type, file_size, num_users):
     return f"{SIMULATION_PATH}/{data_type}_{file_size}_n_users={num_users}_mapping"
+
 
 def get_user_id_to_idx_mapping_path(data_type, file_size, num_users):
     path = get_ids_mapping_path(data_type, file_size, num_users)
     return f"{path}_user_id_to_idx.pkl"
 
+
 def get_item_id_to_idx_mapping_path(data_type, file_size, num_users):
     path = get_ids_mapping_path(data_type, file_size, num_users)
     return f"{path}_item_id_to_idx.pkl"
 
+
 def get_user_idx_to_id_mapping_path(data_type, file_size, num_users):
     path = get_ids_mapping_path(data_type, file_size, num_users)
     return f"{path}_user_idx_to_id.pkl"
+
 
 def get_item_idx_to_id_mapping_path(data_type, file_size, num_users):
     path = get_ids_mapping_path(data_type, file_size, num_users)
@@ -220,8 +266,16 @@ def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
         )
         filled_oracle_matrix = load_pickle_artifact(oracle_output_path)
     else:
-        user_id_to_idx_map =  load_pickle_artifact(get_user_id_to_idx_mapping_path(data_type=data_type, file_size=file_size, num_users=num_users))
-        item_id_to_idx_map = load_pickle_artifact(get_item_id_to_idx_mapping_path(data_type=data_type, file_size=file_size, num_users=num_users))
+        user_id_to_idx_map = load_pickle_artifact(
+            get_user_id_to_idx_mapping_path(
+                data_type=data_type, file_size=file_size, num_users=num_users
+            )
+        )
+        item_id_to_idx_map = load_pickle_artifact(
+            get_item_id_to_idx_mapping_path(
+                data_type=data_type, file_size=file_size, num_users=num_users
+            )
+        )
         print("Filling up rating matrix...")
         filled_oracle_matrix = fill_out_matrix(
             base_df=df,
@@ -229,8 +283,8 @@ def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
             user_sample=users,
             rating_cutoff=class_cutoff,
             rating_scale=rating_scale,
-            item_id_to_idx_map = item_id_to_idx_map,
-            user_id_to_idx_map = user_id_to_idx_map
+            item_id_to_idx_map=item_id_to_idx_map,
+            user_id_to_idx_map=user_id_to_idx_map,
         )
         print(f"Writing filled out matrix to {oracle_output_path}")
     filled_oracle_matrix.to_pickle(oracle_output_path)
@@ -323,7 +377,7 @@ def instantiate_model(config, hyperparameter_tuning_df):
 
 
 def get_experiment_artifacts_path(config):
-    data_type = config["data_type"]
+    data_type = config["data"]
     size = config["size"]
     file_size = input_size_to_sample_size[size]
     exp_name = config["exp_name"]

@@ -3,7 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 
-from dynamicTasteDistortion.ioUtils import read_experiment, read_metrics
+from dynamicTasteDistortion.ioUtils import (
+    read_experiment,
+    read_metrics,
+    read_metrics_per_seed,
+)
 from dynamicTasteDistortion.scripts.metrics_utils import (
     apply_rolling_avg,
     remove_burnin,
@@ -26,10 +30,11 @@ def plot_metrics_smoothed_overlay(
     steps,
     title,
     y_label=None,
+    palette="bright",
 ):
     ylabel = metric_name if y_label is None else y_label
-    colors = sns.color_palette("flare", len(metrics))
-    markers = ["x", "^", "o", "s"]
+    colors = sns.color_palette(palette, len(metrics))
+    markers = ["x", "o", "s", "^"]
 
     for i, (metric, model_name, step) in enumerate(zip(metrics, model_names, steps)):
         color = colors[i]
@@ -47,8 +52,8 @@ def plot_metrics_smoothed_overlay(
                 color=color,
                 marker=marker,
                 zorder=4,
-                s=15,
-                alpha=0.6,
+                s=25,
+                alpha=0.7,
             )
 
     ax.set_title(f"{title}")
@@ -93,6 +98,8 @@ def plot_metric_comparison(
     figsize=HALF_PAGE_FIG_SIZE,
     experiment_aliases=None,
     y_label=None,
+    seed=None,
+    palette="bright",
 ):
 
     if should_remove_outliers:
@@ -104,6 +111,7 @@ def plot_metric_comparison(
         "coverage": "Catalog Coverage",
         "gini": "Gini index",
         "div": "Diversity (ILS)",
+        "frags": "Fragmentation",
     }
 
     metric_key_map = {
@@ -112,6 +120,7 @@ def plot_metric_comparison(
         "coverage": "coverages",
         "gini": "ginis",
         "div": "diversities",
+        "frags": "fragmentation",
     }
 
     nice_name = metric_name_to_nice_name[metric_name.lower()]
@@ -119,13 +128,17 @@ def plot_metric_comparison(
     metrics, labels, steps = [], [], []
     for idx, exp_file in enumerate(experiment_files):
         config = read_experiment(exp_file)
-        all_results = read_metrics(config, should_remove_outliers)
-        
+
         n_trials = config["n_trials"]
         metric_key = metric_key_map[metric_name.lower()]
-        trial_metrics = [all_results[seed][metric_key] for seed in SEEDS[:n_trials]]
-        metric_raw = np.mean(trial_metrics, axis=0)
-        
+        if seed is not None:
+            trial_metrics = read_metrics_per_seed(config, seed)
+            metric_raw = trial_metrics[metric_key]
+        else:
+            all_results = read_metrics(config, should_remove_outliers)
+            trial_metrics = [all_results[seed][metric_key] for seed in SEEDS[:n_trials]]
+            metric_raw = np.mean(trial_metrics, axis=0)
+
         metrics.append(metric_raw)
         if experiment_aliases is not None:
             label = str(experiment_aliases[idx])
@@ -156,6 +169,7 @@ def plot_metric_comparison(
             steps=steps,
             title=title,
             y_label=y_label,
+            palette=palette,
         )
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])

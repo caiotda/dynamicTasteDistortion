@@ -1,0 +1,13 @@
+size: s
+data: globo
+
+rounds: 2500
+num_rounds_per_eval: 250
+num_users: 1000
+
+model: random
+preference_update_rate: 0.1
+use_oracle_matrix: y
+calibrate: constant
+exp_name: random_calibrated
+n_trials: 1
