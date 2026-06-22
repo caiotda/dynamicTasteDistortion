@@ -1,5 +1,5 @@
 size: s
-data: yelp
+data_typeyelp
 
 rounds: 10000
 num_rounds_per_eval: 250

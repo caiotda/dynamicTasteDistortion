@@ -62,7 +62,7 @@ def read_experiment(exp_file):
 
 def extract_experiment_configuration(cfg):
     model_type = cfg.get("model", "bpr")
-    data_type = cfg["data"]
+    data_type = cfg["data_type"]
     size = cfg["size"]
     file_size = input_size_to_file_name[size]
     n_examination_trials = int(cfg.get("examination_attempts", 3))
@@ -377,7 +377,7 @@ def instantiate_model(config, hyperparameter_tuning_df):
 
 
 def get_experiment_artifacts_path(config):
-    data_type = config["data"]
+    data_type = config["data_type"]
     size = config["size"]
     file_size = input_size_to_sample_size[size]
     exp_name = config["exp_name"]
