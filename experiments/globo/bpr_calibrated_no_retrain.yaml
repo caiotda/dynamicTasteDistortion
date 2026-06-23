@@ -1,5 +1,5 @@
 size: s
-data_typeglobo
+data_type: globo
 
 rounds: 2500
 num_rounds_per_eval: 2500

@@ -1,5 +1,5 @@
 size: s
-data_typeyelp
+data_type: yelp
 
 rounds: 2500
 num_rounds_per_eval: 250
@@ -11,12 +11,11 @@ use_oracle_matrix: y
 calibrate: constant
 exp_name: bpr_classic_calibrated_constant_alpha_0_8
 
-
-params: 
+params:
   {
-    'factors': 32,
-    'lr': 0.0001,
-    'reg_lambda': 0.00001,
-    'num_negatives': 5,
-    'n_epochs': 10
+    "factors": 32,
+    "lr": 0.0001,
+    "reg_lambda": 0.00001,
+    "num_negatives": 5,
+    "n_epochs": 10,
   }

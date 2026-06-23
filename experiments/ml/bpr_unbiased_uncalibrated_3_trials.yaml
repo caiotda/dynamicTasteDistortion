@@ -1,5 +1,5 @@
 size: s
-data_typeml
+data_type: ml
 
 rounds: 500
 num_rounds_per_eval: 5
@@ -8,5 +8,5 @@ num_users: 1000
 model: bpr
 preference_update_rate: 0.1
 
-examination_attempts: 3 
+examination_attempts: 3
 exp_name: bpr_unbiased_uncalibrated
