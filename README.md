@@ -46,4 +46,4 @@ Each experiment file has the following arguments
 
 ## Experiment data
 
-As of this version of the paper, we only save the .pkl version of the metrics measured at each iteraction. For reproductibility, we compile the metrics related to each plot/table under `dynamicTasteDistortion/dynamicTasteDistortion/reproductibility_data/` in separate csv files that match the numbering of tables and plots (e.g: table1.csv, figure2.csv etc).
+As of this version of the paper, we only save the .pkl version of the metrics measured at each iteraction. For reproductibility, we compile the metrics related to each plot/table under `dynamicTasteDistortion/dynamicTasteDistortion/reproductibility_data/` in separate csv files that match the numbering of tables and plots (e.g: table1.csv, figure2.csv etc). Refer to https://anonymous.4open.science/r/dynamicTasteDistortion-webmedia/dynamicTasteDistortion/reproductibility_data/ for data pertaining to each figure
