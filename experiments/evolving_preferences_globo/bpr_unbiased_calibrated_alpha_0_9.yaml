@@ -2,15 +2,14 @@ size: s
 data_type: globo
 
 rounds: 2500
-num_rounds_per_eval: 2500
+num_rounds_per_eval: 250
 num_users: 1000
 
 model: bpr
-preference_update_rate: 0.1
-use_oracle_matrix: y
+preference_update_rate: 0.9
+# use_oracle_matrix: y
 calibrate: constant
-exp_name: bpr_unbiased_calibrated_no_retrain
-n_trials: 1
+exp_name: bpr_classic_calibrated_constant_alpha_0_9
 
 params:
   {

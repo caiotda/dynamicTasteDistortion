@@ -1,13 +1,13 @@
 size: s
 data_type: yelp
 
-rounds: 500
-num_rounds_per_eval: 5
+rounds: 2500
+num_rounds_per_eval: 250
 num_users: 1000
 
 model: random
 
 use_oracle_matrix: y
 preference_update_rate: 0.1
-
+n_trials: 10
 exp_name: random_rec

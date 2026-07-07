@@ -1,13 +1,12 @@
 size: s
 data_type: ml
 
-rounds: 500
-num_rounds_per_eval: 5
+rounds: 2500
+num_rounds_per_eval: 250
 num_users: 1000
-
+n_trials: 10
 model: random
 
-use_oracle_matrix: y
 preference_update_rate: 0.1
 
 exp_name: random_rec
