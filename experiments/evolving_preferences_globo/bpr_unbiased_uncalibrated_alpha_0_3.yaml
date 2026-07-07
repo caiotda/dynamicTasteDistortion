@@ -9,3 +9,11 @@ model: bpr
 preference_update_rate: 0.3
 use_oracle_matrix: y
 exp_name: bpr_classic_uncalibrated_alpha_0_3
+params:
+  {
+    "factors": 64,
+    "lr": 0.0001,
+    "reg_lambda": 0.001,
+    "num_negatives": 5,
+    "n_epochs": 7,
+  }
