@@ -1,4 +1,6 @@
 import torch
+import re
+from pathlib import Path
 
 from dynamicTasteDistortion.scripts.metrics_utils import remove_outliers
 from dynamicTasteDistortion.scripts.model_utils import (
@@ -374,6 +376,24 @@ def instantiate_model(config, hyperparameter_tuning_df):
         model = None
 
     return model
+
+
+def get_missing_seeds(base_artifacts_path, predetermined_seeds):
+    if not base_artifacts_path.exists():
+        return list(predetermined_seeds)
+
+    seed_pattern = re.compile(r"_seed(\d+)\.pkl$")
+
+    found_seeds = set()
+    for file in base_artifacts_path.iterdir():
+        if not file.is_file():
+            continue
+        match = seed_pattern.search(file.name)
+        if match:
+            found_seeds.add(int(match.group(1)))
+
+    missing_seeds = [seed for seed in predetermined_seeds if seed not in found_seeds]
+    return missing_seeds
 
 
 def get_experiment_artifacts_path(config):

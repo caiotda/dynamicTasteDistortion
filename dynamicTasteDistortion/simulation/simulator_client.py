@@ -16,6 +16,7 @@ from dynamicTasteDistortion.ioUtils import (
     load_pickle_artifact,
     save_pickle_artifact,
     extract_experiment_configuration,
+    get_missing_seeds,
 )
 
 from dynamicTasteDistortion.simulationConstants import SEEDS
@@ -57,7 +58,29 @@ def main():
     na oracle_matrix.
     """
 
-    for seed in tqdm(SEEDS[:n_trials], desc="Running trials"):
+    base_artifacts_path = get_experiment_artifacts_path(config)
+    seeds_to_run = get_missing_seeds(base_artifacts_path, SEEDS)
+
+    n_succesfull_experiments = len(SEEDS) - len(seeds_to_run)
+    if n_succesfull_experiments == 1:
+        output = f"{n_succesfull_experiments} experiment was already run"
+    else:
+        output = f"{n_succesfull_experiments} experiments were already run"
+
+    if n_succesfull_experiments > 0:
+        print(f"Seeds already used: {n_succesfull_experiments}")
+        print(f"Experiments ran: {sorted(set(SEEDS) - set(seeds_to_run))}")
+        print(
+            f"Requested to run {n_trials} experiments, however, {output}. Resuming from them."
+        )
+    remaining_experiments = max(0, n_trials - n_succesfull_experiments)
+    if remaining_experiments == 0:
+        print(
+            f"Already have {n_succesfull_experiments} successful experiments, meeting or exceeding the requested {n_trials}. Nothing to run."
+        )
+        return
+    for seed in tqdm(seeds_to_run[:remaining_experiments], desc="Running trials"):
+        print(f"Running experiment using seed {seed}")
         torch.manual_seed(seed)
 
         model = instantiate_model(config, hyperparameter_tuning_df=bootstrapped_df)
@@ -73,7 +96,6 @@ def main():
             sim.simulate(k=20)
         )
 
-        base_artifacts_path = get_experiment_artifacts_path(config)
         if base_artifacts_path is not None and not os.path.exists(base_artifacts_path):
             os.makedirs(base_artifacts_path)
 
