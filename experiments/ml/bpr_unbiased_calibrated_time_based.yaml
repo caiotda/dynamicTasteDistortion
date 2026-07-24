@@ -11,3 +11,11 @@ n_trials: 10
 
 calibrate: linear_time
 exp_name: bpr_unbiased_calibrated_linear_time
+params:
+  {
+    "factors": 16,
+    "lr": 0.001,
+    "reg_lambda": 0.01,
+    "num_negatives": 1,
+    "n_epochs": 5,
+  }

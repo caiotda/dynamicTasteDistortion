@@ -114,9 +114,15 @@ class Simulator:
         self.users = torch.tensor(users, device=self.device, dtype=torch.int32)
         # We use bootstrapped df as candidates tensor because our model is coldstarted on it. Therefore, the model
         # embeddings are dependent on which items were observed on the bootstrapped_df.
-        self.items = torch.arange(
-            bootstrapped_df[ITEM_COL].max(), device=self.device, dtype=torch.int32
-        )
+
+        if bootstrapped_df is None:
+            self.items = torch.arange(
+                oracle_matrix[ITEM_COL].max(), device=self.device, dtype=torch.int32
+            )
+        else:
+            self.items = torch.arange(
+                bootstrapped_df[ITEM_COL].max(), device=self.device, dtype=torch.int32
+            )
         un_normalized_map = (
             oracle_matrix[[ITEM_COL, GENRES_COL]]
             .set_index(ITEM_COL)[GENRES_COL]

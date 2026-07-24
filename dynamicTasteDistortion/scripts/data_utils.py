@@ -11,12 +11,21 @@ from dynamicTasteDistortion.simulationConstants import (
     REVIEWS_PER_USER_THRESHOLD,
 )
 
+import gc
+import torch
+
 synonyms = {
     "children": "child",
     "childs": "child",
     "childrens": "child",
     "thrill": "thriller",
 }
+
+
+def flush():
+    gc.collect()
+    torch.cuda.empty_cache()
+    torch.cuda.ipc_collect()
 
 
 def concat_dfs(df1, df2):

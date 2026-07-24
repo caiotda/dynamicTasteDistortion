@@ -19,6 +19,9 @@ from dynamicTasteDistortion.ioUtils import (
     get_missing_seeds,
 )
 
+
+from dynamicTasteDistortion.scripts.data_utils import flush
+
 from dynamicTasteDistortion.simulationConstants import SEEDS
 
 from scipy.stats import expon
@@ -124,5 +127,8 @@ def main():
             "diversities": diversities,
             "frags": frags,
         }
+        print("Freeing GPU memory...")
+        del sim
+        flush()
 
     save_pickle_artifact(results, f"{base_artifacts_path}/all_results.pkl")

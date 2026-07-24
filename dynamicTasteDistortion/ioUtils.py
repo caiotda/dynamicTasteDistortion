@@ -250,6 +250,7 @@ def get_timestamp_behavior_path(
 
 def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
     num_users = len(users)
+    rating_scale = (1, 5)
     if data_type == "food":
         class_cutoff = 3.0
     elif data_type == "globo":
