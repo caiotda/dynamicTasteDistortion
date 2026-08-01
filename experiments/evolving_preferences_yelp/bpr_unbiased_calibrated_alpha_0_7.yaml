@@ -13,9 +13,9 @@ exp_name: bpr_classic_calibrated_constant_alpha_0_7
 
 params:
   {
-    "factors": 32,
+    "factors": 64,
     "lr": 0.0001,
-    "reg_lambda": 0.00001,
+    "reg_lambda": 0.001,
     "num_negatives": 5,
-    "n_epochs": 10,
+    "n_epochs": 7,
   }
