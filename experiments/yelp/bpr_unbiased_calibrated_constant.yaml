@@ -10,3 +10,12 @@ preference_update_rate: 0.1
 n_trials: 10
 calibrate: constant
 exp_name: bpr_unbiased_calibrated_constant
+
+params:
+  {
+    "factors": 64,
+    "lr": 0.0001,
+    "reg_lambda": 0.001,
+    "num_negatives": 5,
+    "n_epochs": 7,
+  }
