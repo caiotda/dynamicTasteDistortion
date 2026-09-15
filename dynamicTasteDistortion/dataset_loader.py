@@ -307,7 +307,7 @@ def get_food_df():
 
 def get_globo_df(size):
     df = read_globo_dataset_raw().sample(size)
-    processed_df =  process_globo_df(df)
+    processed_df = process_globo_df(df)
     return processed_df
 
 
