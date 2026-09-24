@@ -20,15 +20,6 @@ from dynamicTasteDistortion.simulationConstants import (
     input_size_to_file_name,
 )
 
-from dynamicTasteDistortion.scripts.model_utils import (
-    HyperParameterTuner,
-    MostPopularRecommender,
-)
-
-from bprMf.bpr_mf import bprMFWithClickDebiasing, bprMf
-
-
-from dynamicTasteDistortion.scripts.data_utils import standardize_ids
 
 import os
 from pathlib import Path
@@ -292,91 +283,6 @@ def get_or_create_oracle_matrix(oracle_model, df, data_type, file_size, users):
         print(f"Writing filled out matrix to {oracle_output_path}")
     filled_oracle_matrix.to_pickle(oracle_output_path)
     return filled_oracle_matrix
-
-
-def instantiate_model(config, hyperparameter_tuning_df):
-
-    model_type_to_class = {"bpr": bprMFWithClickDebiasing, "bpr_classic": bprMf}
-    overwrite_model_selection = config["overwrite_model_selection"]
-    model_params = config["model_params"]
-    model_type = config["model_type"]
-    data_type = config["data_type"]
-    overwrite_model_selection = config["overwrite_model_selection"]
-    size = config["size"]
-    num_users = config["num_users"]
-    file_size = input_size_to_sample_size[size]
-
-    n_users = hyperparameter_tuning_df.user.max() + 1
-    n_items = hyperparameter_tuning_df.item.max() + 1
-
-    dev = "cuda" if torch.cuda.is_available() else "cpu"
-
-    model_path, best_params_path = get_model_and_params_paths(config)
-
-    if overwrite_model_selection:
-        if model_type not in ("bpr", "bpr_classic"):
-            raise ValueError(
-                "overwrite_model_selection is not supported for most_popular or random model."
-            )
-        ModelClass = model_type_to_class[model_type]
-        print(f"Using predefined best params: {model_params}")
-        model = ModelClass(
-            num_users=n_users, num_items=n_items, dev=dev, **model_params
-        )
-
-    elif model_type == "most_popular":
-        print(f"Loading {data_type}_{file_size} dataset to fit Most Popular model...")
-        sample_size = size if data_type == "ml" else file_size
-        df = load_df(data_type, size=sample_size)
-        processed_df, _, _ = standardize_ids(df)
-        model = MostPopularRecommender(processed_df)
-
-    elif model_type in ("bpr", "bpr_classic"):
-        ModelClass = model_type_to_class[model_type]
-
-        if Path(model_path).exists():
-            print(
-                f"Best model {model_type} found for {data_type}_{file_size} with {num_users} at {model_path}."
-            )
-            print(f"Model params: {load_pickle_artifact(best_params_path)}")
-            overwrite = (
-                input("Model artifact already exists. Overwrite and retrain? [y/N]: ")
-                .strip()
-                .lower()
-            )
-
-            if overwrite in ("n", "no", ""):
-                print("Using existing model and skipping hyperparameter tuning.")
-                model = load_pickle_artifact(model_path)
-            else:
-                print("Deleting existing model artifact and retraining.")
-                Path(model_path).unlink()
-                Path(best_params_path).unlink()
-                cv_results_save_path = get_cv_results_path(config)
-                cv_results_path_obj = Path(cv_results_save_path)
-                if cv_results_path_obj.exists():
-                    cv_results_path_obj.unlink()
-
-        if not Path(model_path).exists():  # either never existed, or just deleted above
-            print(
-                f"No {model_type} found for {data_type}_{file_size} with {num_users} sampled users. Starting hyperparameter tuning."
-            )
-            tuner = HyperParameterTuner(hyperparameter_tuning_df, ModelClass)
-            model, cv_results, best_params = tuner.tune(
-                truth_set=hyperparameter_tuning_df, k=5
-            )
-            save_pickle_artifact(best_params, best_params_path)
-            save_pickle_artifact(model, model_path)
-            cv_results_save_path = get_cv_results_path(config)
-            cv_results.to_csv(cv_results_save_path)
-            model = ModelClass(
-                num_users=n_users, num_items=n_items, dev=dev, **best_params
-            )
-
-    else:
-        model = None
-
-    return model
 
 
 def get_missing_seeds(base_artifacts_path, predetermined_seeds):
