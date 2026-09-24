@@ -1,7 +1,4 @@
-import ast
-import pickle
-import os
-from bprMf.evaluation import compute_map_at_k
+from recmodels.evaluation import compute_map_at_k
 import torch
 
 import numpy as np
@@ -13,9 +10,8 @@ from itertools import product
 
 from tqdm import tqdm, trange
 
-
-from bprMf.model import BaseModel
-from bprMf.utils.data import temporal_train_val_test_split
+from recmodels.model import BaseModel
+from recmodels.utils.data import temporal_train_val_test_split
 
 
 from dynamicTasteDistortion.simulationConstants import (

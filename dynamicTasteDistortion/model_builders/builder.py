@@ -1,4 +1,4 @@
-from model_builders import MODEL_BUILDERS
+from dynamicTasteDistortion.model_builders import MODEL_BUILDERS
 
 
 def instantiate_model(config, hyperparameter_tuning_df):

@@ -1,4 +1,3 @@
-from bprMf.evaluation import compute_map_at_k, calculate_mmr
 from dynamicTasteDistortion.scripts.metrics_utils import (
     catalog_coverage,
     precompute_jaccard,

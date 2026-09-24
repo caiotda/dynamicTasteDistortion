@@ -7,11 +7,13 @@ import pandas as pd
 from tqdm import tqdm
 
 from dynamicTasteDistortion.simulation.simulator import Simulator
+
+from dynamicTasteDistortion.model_builders.builder import instantiate_model
+
 from dynamicTasteDistortion.ioUtils import (
     get_experiment_artifacts_path,
     get_oracle_matrix_path,
     get_timestamp_behavior_path,
-    instantiate_model,
     load_bootstrapped_clicks,
     load_pickle_artifact,
     save_pickle_artifact,
