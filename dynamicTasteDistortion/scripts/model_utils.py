@@ -1,4 +1,5 @@
 from recmodels.evaluation import compute_map_at_k
+import random
 import torch
 
 import numpy as np
@@ -9,7 +10,7 @@ from surprise import SVD, NMF, Reader, SVDpp, Dataset as SurpriseDataset
 from itertools import product
 
 from tqdm import tqdm, trange
-
+import itertools
 from recmodels.model import BaseModel
 from recmodels.utils.data import temporal_train_val_test_split
 
@@ -20,6 +21,7 @@ from dynamicTasteDistortion.simulationConstants import (
     USER_COL,
     ITEM_COL,
 )
+from dynamicTasteDistortion.model_builders import MODEL_BUILDERS, PARAM_GRIDS
 
 MODEL_NAME_TO_CLASS_NAME = {"NMF": NMF, "SVD++": SVDpp}
 
@@ -84,80 +86,64 @@ class MostPopularRecommender(BaseModel):
         return map_k
 
 
-bpr_param_grid = {
-    "factors": [16, 32, 64, 128],
-    "lr": [1e-5, 1e-4, 1e-3, 1e-2],
-    "reg_lambda": [1e-5, 1e-4, 1e-3, 1e-2],
-    "num_negatives": [1, 5, 10],
-    "n_epochs": [5, 7, 10],
-}
-
-
 class HyperParameterTuner:
-    def __init__(self, df, model, params=bpr_param_grid):
-        self.params = params
-        self.ModelClass = model
-        self.seed = 42
+    def __init__(self, df, model, config=None, param_grid=None, seed=42):
+        """
+        model: key in MODEL_BUILDERS (e.g. "iknn", "bpr")
+        config: optional config dict; its model_params act as fixed defaults
+                that the tuned params override
+        param_grid: optional override of PARAM_GRIDS[model]
+        """
+        if model not in MODEL_BUILDERS:
+            raise ValueError(
+                f"Unknown model '{model}'. Supported: {sorted(MODEL_BUILDERS)}"
+            )
         self.df = df
-        self.dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model_type = model
+        self.config = config or {}
+        self.param_grid = (
+            PARAM_GRIDS.get(model, {}) if param_grid is None else param_grid
+        )
+        self.rng = random.Random(seed)
+        builder = MODEL_BUILDERS[model]
+        self.build_fn = lambda params: builder(self.config, self.df, **params)
 
-        self.n_users = df.user.max() + 1
-        self.n_items = df.item.max() + 1
+    def _candidates(self, n_samples):
+        names = list(self.param_grid)
+        combos = [
+            dict(zip(names, vals))
+            for vals in itertools.product(*self.param_grid.values())
+        ]
+        return (
+            combos if len(combos) <= n_samples else self.rng.sample(combos, n_samples)
+        )
 
     def tune(self, truth_set, val_pct=0.2, test_pct=0.2, n_samples=20, k=20):
-        def choice(options):
-            idx = torch.randint(len(options), (1,)).item()
-            return options[idx]
+        if not self.param_grid:
+            return self.build_fn({}), pd.DataFrame(), {}
 
         train_df, val_df, _ = temporal_train_val_test_split(
-            df=self.df,
-            user_col=USER_COL,
-            val_pct=val_pct,
-            test_pct=test_pct,
+            df=self.df, user_col=USER_COL, val_pct=val_pct, test_pct=test_pct
         )
         pos_truth_set = truth_set[truth_set["relevant"] == 1].copy()
 
+        candidates = self._candidates(n_samples)
         results = []
-        for i in trange(n_samples, desc="Processing tuning rounds"):
-            params = {
-                "factors": int(choice(self.params["factors"])),
-                "lr": float(choice(self.params["lr"])),
-                "reg_lambda": float(choice(self.params["reg_lambda"])),
-                "num_negatives": int(choice(self.params["num_negatives"])),
-                "n_epochs": int(choice(self.params["n_epochs"])),
-            }
-
-            print(f"[{i+1}/{n_samples}] Testing: {params}")
-            model = self.ModelClass(
-                num_users=self.n_users,
-                num_items=self.n_items,
-                dev=self.dev,
-                **params,
-            )
+        for i, params in enumerate(tqdm(candidates, desc="Tuning")):
+            model = self.build_fn(params)
             model.fit(train_df)
-            map_score = model.evaluate(
+            score = model.evaluate(
                 train_df=train_df, oot_df=val_df, oracle_df_pos=pos_truth_set, k=k
             )
+            print(f"[{i+1}/{len(candidates)}] {params} -> MAP@{k}: {score:.4f}")
+            results.append({"params": params, "map": score})
 
-            print(f"  MAP@{k}: {map_score:.4f}")
-            results.append({**params, "map": map_score})
+        best = max(results, key=lambda r: r["map"])
+        results_df = pd.DataFrame(
+            [{**r["params"], "map": r["map"]} for r in results]
+        ).sort_values("map", ascending=False)
 
-        results_df = pd.DataFrame(results).sort_values("map", ascending=False)
-
-        # retrain best model on train+val, evaluate on test
-        best_params = results_df.iloc[0].drop("map").to_dict()
-        best_params = {
-            k: (int(v) if k != "lr" and k != "reg_lambda" else float(v))
-            for k, v in best_params.items()
-        }
-        print(f"\nBest params: {best_params}")
-        print(f"Best val MAP@{k}: {results_df.iloc[0]['map']:.4f}")
-
-        final_model = self.ModelClass(
-            num_users=self.n_users, num_items=self.n_items, dev=self.dev, **best_params
-        )
-
-        return final_model, results_df, best_params
+        return self.build_fn(best["params"]), results_df, best["params"]
 
 
 # Oracle model based
