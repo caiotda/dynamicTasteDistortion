@@ -2,9 +2,8 @@ import torch
 import re
 from pathlib import Path
 
-from dynamicTasteDistortion.scripts.metrics_utils import remove_outliers
-from dynamicTasteDistortion.scripts.model_utils import (
-    choose_best_model,
+from dynamicTasteDistortion.model_builders.oracle_chooser import (
+    choose_best_oracle,
 )
 from dynamicTasteDistortion.dataset_loader import load_df, input_size_to_sample_size
 
@@ -346,7 +345,7 @@ def get_or_create_oracle_model_artifacts(df, data_type, size):
             # We also convert genres into list of strings for
         else:
             class_cutoff = 4.0
-        oracle_model, f1_results = choose_best_model(
+        oracle_model, f1_results = choose_best_oracle(
             df, class_cutoff=class_cutoff, rating_scale=rating_scale
         )
         save_pickle_artifact(oracle_model, oracle_model_path)
