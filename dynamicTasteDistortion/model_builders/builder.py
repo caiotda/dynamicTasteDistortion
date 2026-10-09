@@ -24,7 +24,7 @@ def _load_existing_or_clear(config):
 
     file_size = input_size_to_sample_size[config["size"]]
     print(
-        f"Best model {config['model']} found for {config['data_type']}_{file_size} "
+        f"Best model {config['model_type']} found for {config['data_type']}_{file_size} "
         f"with {config['num_users']} users at {model_path}."
     )
     print(f"Model params: {load_pickle_artifact(best_params_path)}")
@@ -48,7 +48,7 @@ def _load_existing_or_clear(config):
 
 
 def instantiate_model(config, hyperparameter_tuning_df, k=5):
-    model_type = config["model"]
+    model_type = config["model_type"]
     if model_type not in MODEL_BUILDERS:
         raise ValueError(
             f"Unknown model '{model_type}'. Supported: {sorted(MODEL_BUILDERS)}"

@@ -11,10 +11,20 @@ import tempfile
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-def fill_out_matrix(base_df, model, user_sample, item_id_to_idx_map, user_id_to_idx_map, rating_cutoff=4.0, batch_size=50_000, rating_scale=(1,5)):
+
+def fill_out_matrix(
+    base_df,
+    model,
+    user_sample,
+    item_id_to_idx_map,
+    user_id_to_idx_map,
+    rating_cutoff=4.0,
+    batch_size=50_000,
+    rating_scale=(1, 5),
+):
     # ACM Disclosure: This function was AI generated. The previous version, which can be found
-    # at this hash command (link) worked, but was prone to OOM errors. This new version uses 
-    # pyarrow to save partial results in disk and uses parquet files instead of csv, avoiding 
+    # at this hash command (link) worked, but was prone to OOM errors. This new version uses
+    # pyarrow to save partial results in disk and uses parquet files instead of csv, avoiding
     # RAM overhead.
 
     reader = Reader(rating_scale=rating_scale)
@@ -31,19 +41,24 @@ def fill_out_matrix(base_df, model, user_sample, item_id_to_idx_map, user_id_to_
     # user_ids = [trainset.to_raw_uid(u) for u in all_users]
     item_ids = [trainset.to_raw_iid(i) for i in all_items]
 
-    genres_map = base_df[["item", "genres"]].drop_duplicates("item").set_index("item")["genres"]
+    genres_map = (
+        base_df[["item", "genres"]].drop_duplicates("item").set_index("item")["genres"]
+    )
 
-    schema = pa.schema([
-        pa.field("user", pa.string()),
-        pa.field("item", pa.string()),
-        pa.field("rating", pa.int8()),
-        pa.field("genres", pa.list_(pa.string())),
-    ])
+    schema = pa.schema(
+        [
+            pa.field("user", pa.string()),
+            pa.field("item", pa.string()),
+            pa.field("rating", pa.int8()),
+            pa.field("genres", pa.list_(pa.string())),
+        ]
+    )
 
     tmp_dir = tempfile.mkdtemp()
     writer = pq.ParquetWriter(os.path.join(tmp_dir, "predictions.parquet"), schema)
 
     buffer = []
+
     def flush():
         if buffer:
             table = pa.Table.from_pylist(buffer, schema=schema)
@@ -56,29 +71,34 @@ def fill_out_matrix(base_df, model, user_sample, item_id_to_idx_map, user_id_to_
 
         for item_id in item_ids:
             if item_id not in rated_items:
-                # We need to predict with the original user id, hence 
+                # We need to predict with the original user id, hence
                 # why we map it back. item_id is already the original
                 # id.
                 est = model.predict(user_id, item_id).est
                 # We store the idx version of each user and item idx.
                 # The result is a standardized dataset.
-                buffer.append({
-                    "user": str(user_id_to_idx_map[user_id]),
-                    "item": str(item_id_to_idx_map[item_id]),
-                    "rating": int(est >= rating_cutoff),
-                    "genres": genres_map.get(item_id, ""),
-                })
+                buffer.append(
+                    {
+                        "user": str(user_id_to_idx_map[user_id]),
+                        "item": str(item_id_to_idx_map[item_id]),
+                        "rating": int(est >= rating_cutoff),
+                        "genres": genres_map.get(item_id, ""),
+                    }
+                )
                 if len(buffer) >= batch_size:
                     flush()
-    flush() 
+    flush()
 
     writer.close()
 
-    
     # Merge the filtered dataset with the filled out version.
     filtered_original_df = base_df[base_df[USER_COL].isin(user_sample)].copy()
-    filtered_original_df[USER_COL] = filtered_original_df[USER_COL].map(user_id_to_idx_map)
-    filtered_original_df[ITEM_COL] = filtered_original_df[ITEM_COL].map(item_id_to_idx_map)
+    filtered_original_df[USER_COL] = filtered_original_df[USER_COL].map(
+        user_id_to_idx_map
+    )
+    filtered_original_df[ITEM_COL] = filtered_original_df[ITEM_COL].map(
+        item_id_to_idx_map
+    )
     base_out = filtered_original_df[["user", "item", "genres", "rating"]].copy()
     base_out["user"] = base_out["user"].astype(str)
     base_out["item"] = base_out["item"].astype(str)
@@ -93,6 +113,7 @@ def fill_out_matrix(base_df, model, user_sample, item_id_to_idx_map, user_id_to_
     df_filled["user"] = df_filled["user"].astype(int)
     df_filled["item"] = df_filled["item"].astype(int)
     return df_filled
+
 
 def get_timestamp_behavior(df):
     avg_std_time_diff_per_user = (

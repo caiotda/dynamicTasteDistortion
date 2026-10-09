@@ -57,6 +57,7 @@ class HyperParameterTuner:
         candidates = self._candidates(n_samples)
         results = []
         for i, params in enumerate(tqdm(candidates, desc="Tuning")):
+            print(f"Params: {params}")
             model = self.build_fn(params)
             model.fit(train_df)
             score = model.evaluate(

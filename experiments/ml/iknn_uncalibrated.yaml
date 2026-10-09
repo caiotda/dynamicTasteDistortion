@@ -7,8 +7,6 @@ num_users: 1000
 n_trials: 10
 model: iknn
 
-params: { "k_neighbors": 10 }
-
 preference_update_rate: 0.1
-
-exp_name: iknn_rec
+params: { "k_neighbors": 20 }
+exp_name: iknn_uncalibrated
