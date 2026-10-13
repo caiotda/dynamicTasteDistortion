@@ -1,0 +1,14 @@
+size: s
+data_type: ml
+
+rounds: 2500
+num_rounds_per_eval: 250
+num_users: 1000
+n_trials: 10
+model: uknn
+calibrate: constant
+
+params: { "k_neighbors": 10 }
+preference_update_rate: 0.1
+
+exp_name: uknn_calibrated_constant

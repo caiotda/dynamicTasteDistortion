@@ -1,0 +1,14 @@
+size: s
+data_type: ml
+
+rounds: 2500
+num_rounds_per_eval: 250
+num_users: 1000
+n_trials: 10
+model: iknn
+calibrate: constant
+
+preference_update_rate: 0.1
+params: { "k_neighbors": 20 }
+
+exp_name: iknn_calibrated_constant
