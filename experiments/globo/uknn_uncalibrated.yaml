@@ -1,0 +1,11 @@
+size: s
+data_type: globo
+
+rounds: 2500
+num_rounds_per_eval: 250
+num_users: 1000
+n_trials: 10
+model: uknn
+preference_update_rate: 0.1
+
+exp_name: uknn_uncalibrated

@@ -6,8 +6,8 @@ from dynamicTasteDistortion.scripts.metrics_utils import (
     fragmentation,
 )
 import torch
-import os
 import copy
+import gc
 
 import numpy as np
 import pandas as pd
@@ -507,6 +507,9 @@ class Simulator:
                 round_interactions = pd.DataFrame({}, columns=bootstrapped_df.columns)
                 if not self.use_random_rec:
                     print("retraining model...")
+                    self.model = None
+                    gc.collect()
+                    torch.cuda.empty_cache()
                     self.model = copy.deepcopy(initial_model)
                     self.model = self.model.to(self.device)
                     _ = self.model.fit(bootstrapped_df, debug=False)
