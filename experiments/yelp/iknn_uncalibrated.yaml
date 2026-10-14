@@ -1,0 +1,13 @@
+size: s
+data_type: yelp
+
+rounds: 2500
+num_rounds_per_eval: 250
+num_users: 1000
+n_trials: 10
+model: iknn
+params: { "k_neighbors": 5 }
+
+preference_update_rate: 0.1
+
+exp_name: iknn_uncalibrated
