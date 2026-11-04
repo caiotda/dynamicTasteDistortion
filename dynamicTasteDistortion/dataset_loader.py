@@ -188,24 +188,16 @@ def read_yelp_raw(size):
     destination_dir = f"{YELP_PATH}/raw/yelp_{size}/"
     _ = download(yelp_url, destination_dir)
     review_file = "yelp_academic_dataset_review.json"
-    user_file = "yelp_academic_dataset_user.json"
     business_file = "yelp_academic_dataset_business.json"
-
-    users_df = read_json_file(destination_dir, user_file, limit=size)[
-        ["user_id", "review_count"]
-    ]
-    filtered_users_df = users_df[users_df["review_count"] >= REVIEWS_PER_USER_THRESHOLD]
-    users_to_keep = list(filtered_users_df["user_id"].unique())
 
     reviews_df = read_json_file(destination_dir, review_file, limit=size)[
         ["user_id", "business_id", "stars", "date"]
     ]
-    filtered_reviews = reviews_df[reviews_df["user_id"].isin(users_to_keep)]
 
     business_df = read_json_file(destination_dir, business_file, limit=size)[
         ["business_id", "categories"]
     ].drop_duplicates()
-    yelp_df = filtered_reviews.merge(business_df, on="business_id")
+    yelp_df = reviews_df.merge(business_df, on="business_id")
 
     return yelp_df.rename(
         columns={
@@ -294,7 +286,8 @@ def get_yelp_df(size):
     raw_df = read_yelp_raw(size)
     cleaned = process_df(raw_df, rating_threshold=4)
     cleaned[GENRES_COL] = preprocess_genres(cleaned, GENRES_COL, SEP=",")
-    return cleaned
+    filtered_df = filter_inactive_users(cleaned, threshold=REVIEWS_PER_USER_THRESHOLD)
+    return filtered_df
 
 
 def get_food_df():
