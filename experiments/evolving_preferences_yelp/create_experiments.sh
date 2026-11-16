@@ -29,6 +29,11 @@ for model in "$@"; do
     for i in $(seq 1 9); do
       alpha="0.$i"
       name="${model}_${calibration_name}_alpha_0_${i}"
+      if [ "$model" = "iknn" ]; then
+        k_neighbors=5
+      else
+        k_neighbors=20
+      fi
       cat > "${name}.yaml" <<EOF
 size: s
 data_type: yelp
@@ -41,7 +46,7 @@ model: ${model}
 preference_update_rate: ${alpha}
 
 ${calibrate_line}exp_name: ${name}
-params: { "k_neighbors": 10 }
+params: { "k_neighbors": ${k_neighbors} }
 EOF
     done
   done

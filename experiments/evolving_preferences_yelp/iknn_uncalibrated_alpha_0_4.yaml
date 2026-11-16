@@ -9,4 +9,4 @@ model: iknn
 preference_update_rate: 0.4
 
 exp_name: iknn_uncalibrated_alpha_0_4
-params: { "k_neighbors": 10 }
+params: { "k_neighbors": 5 }
