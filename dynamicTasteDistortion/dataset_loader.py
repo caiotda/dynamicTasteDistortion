@@ -6,6 +6,8 @@ from dynamicTasteDistortion.scripts.data_utils import (
     filter_inactive_users,
     preprocess_genres,
     sample_negatives,
+    remove_inactive_genres,
+    remove_inactive_items
 )
 
 pd.options.mode.chained_assignment = None
@@ -286,7 +288,9 @@ def get_yelp_df(size):
     raw_df = read_yelp_raw(size)
     cleaned = process_df(raw_df, rating_threshold=4)
     cleaned[GENRES_COL] = preprocess_genres(cleaned, GENRES_COL, SEP=",")
-    filtered_df = filter_inactive_users(cleaned, threshold=REVIEWS_PER_USER_THRESHOLD)
+    with_active_users_df = filter_inactive_users(cleaned, threshold=REVIEWS_PER_USER_THRESHOLD)
+    with_frequent_genres_df = remove_inactive_genres(with_active_users_df)
+    filtered_df = remove_inactive_items(with_frequent_genres_df)
     return filtered_df
 
 
