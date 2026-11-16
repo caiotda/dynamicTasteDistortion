@@ -2,6 +2,9 @@ import glob
 
 import pandas as pd
 
+import shutil
+import kagglehub
+
 from dynamicTasteDistortion.scripts.data_utils import (
     filter_inactive_users,
     preprocess_genres,
@@ -76,8 +79,11 @@ def download(dataset_url, destination_dir):
 
 
 def read_globo_dataset_raw():
-    url = "https://www.kaggle.com/api/v1/datasets/download/gspmoreira/news-portal-user-interactions-by-globocom"
-    _ = download(url, GLOBO_PATH)
+    if not (os.path.exists(GLOBO_PATH) and os.listdir(GLOBO_PATH)):
+        src = kagglehub.dataset_download(
+            "gspmoreira/news-portal-user-interactions-by-globocom"
+        )
+        shutil.copytree(src, GLOBO_PATH, dirs_exist_ok=True)
     print("Download finished! Merging intermediate files.")
     csv_files = sorted(glob.glob(f"{GLOBO_PATH}/clicks/clicks/*.csv"))
     globo_columns = [
@@ -113,7 +119,6 @@ def read_globo_dataset_raw():
         ]
     ).rename(columns={"click_article_id": "article_id"})
     return final_dataset
-
 
 def process_globo_df(df):
     globo_articles = pd.read_csv(f"{GLOBO_PATH}/articles_metadata.csv")[
@@ -184,11 +189,10 @@ def read_json_file(base_path, file, limit=math.inf):
 
 
 def read_yelp_raw(size):
-    yelp_url = (
-        "https://www.kaggle.com/api/v1/datasets/download/yelp-dataset/yelp-dataset"
-    )
     destination_dir = f"{YELP_PATH}/raw/yelp_{size}/"
-    _ = download(yelp_url, destination_dir)
+    if not (os.path.exists(destination_dir) and os.listdir(destination_dir)):
+        src = kagglehub.dataset_download("yelp-dataset/yelp-dataset")
+        shutil.copytree(src, destination_dir, dirs_exist_ok=True)
     review_file = "yelp_academic_dataset_review.json"
     business_file = "yelp_academic_dataset_business.json"
 
