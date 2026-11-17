@@ -68,10 +68,28 @@ def sample_negatives(df, k, candidates):
 
 
 def preprocess_genres(df, genre_col="genres", SEP="|"):
+    df = df[~df["genres"].isna()]
     return df[genre_col].apply(
         lambda text: [text_preprocess(token) for token in text.split(SEP)]
     )
 
+def remove_inactive_genres(df, percentile=0.5, genre_col="genres"):
+    """Remove genres with few interactions, based on the given percentile."""
+    exploded = df.explode(genre_col)
+    counts = exploded.groupby(genre_col).size()
+    threshold = counts.quantile(percentile)
+
+    active = exploded[exploded[genre_col].isin(counts[counts >= threshold].index)]
+    result = df.copy()
+    result[genre_col] = active.groupby(level=0)[genre_col].agg(list)
+    return result
+
+def remove_inactive_items(df, percentile=0.25, item_col="item"):
+    """Remove items with interaction counts below the given quantile."""
+    item_counts = df.groupby(item_col)[item_col].transform("size")
+    threshold = item_counts.quantile(percentile)
+    
+    return df[item_counts > threshold].copy()
 
 def normalize_word(word):
     return synonyms.get(word, word)

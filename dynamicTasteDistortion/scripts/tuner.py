@@ -4,6 +4,9 @@ import random
 import numpy as np
 import pandas as pd
 
+import gc
+import torch
+
 from tqdm import tqdm
 
 
@@ -65,6 +68,9 @@ class HyperParameterTuner:
             )
             print(f"[{i+1}/{len(candidates)}] {params} -> MAP@{k}: {score:.4f}")
             results.append({"params": params, "map": score})
+            del model
+            gc.collect()
+            torch.cuda.empty_cache()
 
         best = max(results, key=lambda r: r["map"])
         results_df = pd.DataFrame(
